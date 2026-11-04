@@ -5,6 +5,7 @@ FROM ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce
 ARG DEBIAN_FRONTEND=noninteractive
 ARG NODE_MAJOR=24
 ARG JAVA_MAJOR=25
+ARG STARSHIP_VERSION=1.27.0
 
 ENV LANG=C.UTF-8 \
     LC_ALL=C.UTF-8 \
@@ -35,9 +36,13 @@ RUN apt-get update \
       wget unzip zip xz-utils rsync file procps psmisc lsof dnsutils iputils-ping netcat-openbsd \
       zsh zsh-autosuggestions zsh-syntax-highlighting bash-completion man-db \
  && ln -s /usr/bin/fdfind /usr/local/bin/fd \
- && npm install -g --prefix /usr npm@latest pnpm@latest \
- && npx -y playwright@latest install-deps chromium \
- && curl -fsSL https://starship.rs/install.sh | sh -s -- --yes --bin-dir /usr/local/bin \
+ && NPM_CONFIG_MIN_RELEASE_AGE=3 NPM_CONFIG_IGNORE_SCRIPTS=true npm install -g --prefix /usr npm@latest pnpm@latest \
+ && NPM_CONFIG_MIN_RELEASE_AGE=3 npx -y playwright@latest install-deps chromium \
+ && cd /tmp \
+ && curl -fsSLO "https://github.com/starship/starship/releases/download/v${STARSHIP_VERSION}/starship-x86_64-unknown-linux-musl.tar.gz" \
+ && echo "$(curl -fsSL "https://github.com/starship/starship/releases/download/v${STARSHIP_VERSION}/starship-x86_64-unknown-linux-musl.tar.gz.sha256")  starship-x86_64-unknown-linux-musl.tar.gz" | sha256sum -c - \
+ && tar -xzf starship-x86_64-unknown-linux-musl.tar.gz -C /usr/local/bin starship \
+ && cd / \
  && rm -rf /var/lib/apt/lists/* /root/.npm /root/.cache /tmp/*
 
 RUN userdel -r ubuntu 2>/dev/null || true \

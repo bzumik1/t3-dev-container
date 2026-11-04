@@ -1165,7 +1165,6 @@
     },
     {
       "names": [
-        "add_key",
         "chroot",
         "clone",
         "clone3",
@@ -1173,22 +1172,29 @@
         "fsmount",
         "fsopen",
         "fspick",
-        "keyctl",
         "mount",
         "mount_setattr",
         "move_mount",
         "open_tree",
         "pivot_root",
-        "request_key",
         "setdomainname",
         "sethostname",
         "setns",
-        "umount",
         "umount2",
         "unshare"
       ],
       "action": "SCMP_ACT_ALLOW",
       "comment": "t3-dev: rootless Docker (rootlesskit, runc) inside an unprivileged container"
+    },
+    {
+      "names": [
+        "add_key",
+        "keyctl",
+        "request_key"
+      ],
+      "action": "SCMP_ACT_ERRNO",
+      "errnoRet": 38,
+      "comment": "t3-dev: keyrings report ENOSYS; runc tolerates that and nested containers keep working"
     }
   ]
 }

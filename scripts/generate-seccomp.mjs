@@ -8,7 +8,6 @@
 const source = "https://raw.githubusercontent.com/moby/profiles/main/seccomp/default.json";
 
 const rootlessDockerSyscalls = [
-  "add_key",
   "chroot",
   "clone",
   "clone3",
@@ -16,17 +15,14 @@ const rootlessDockerSyscalls = [
   "fsmount",
   "fsopen",
   "fspick",
-  "keyctl",
   "mount",
   "mount_setattr",
   "move_mount",
   "open_tree",
   "pivot_root",
-  "request_key",
   "setdomainname",
   "sethostname",
   "setns",
-  "umount",
   "umount2",
   "unshare",
 ];
@@ -41,6 +37,13 @@ profile.syscalls.push({
   names: rootlessDockerSyscalls,
   action: "SCMP_ACT_ALLOW",
   comment: "t3-dev: rootless Docker (rootlesskit, runc) inside an unprivileged container",
+});
+
+profile.syscalls.push({
+  names: ["add_key", "keyctl", "request_key"],
+  action: "SCMP_ACT_ERRNO",
+  errnoRet: 38,
+  comment: "t3-dev: keyrings report ENOSYS; runc tolerates that and nested containers keep working",
 });
 
 process.stdout.write(JSON.stringify(profile, null, 2) + "\n");
