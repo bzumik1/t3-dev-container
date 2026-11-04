@@ -24,4 +24,4 @@ done
 section "Syscalls rootless Docker needs"
 check "user namespaces work" 'unshare -Ur id -u | grep -qx 0'
 check_host "profile in use is the custom one" 'docker inspect -f "{{range .HostConfig.SecurityOpt}}{{println .}}{{end}}" t3-dev | grep -q "^seccomp="'
-check_host "AppArmor unconfined and systempaths unconfined, nothing else relaxed" '[ "$(docker inspect -f "{{range .HostConfig.SecurityOpt}}{{println .}}{{end}}" t3-dev | grep -E "^(apparmor|systempaths|label|no-new-privileges|privileged)" | sort | tr "\n" " ")" = "apparmor=unconfined systempaths=unconfined " ]'
+check_host "AppArmor unconfined and systempaths unconfined, nothing else relaxed" 'v=$(docker inspect -f "{{range .HostConfig.SecurityOpt}}{{println .}}{{end}}" t3-dev | grep -E "^(apparmor|systempaths|label|no-new-privileges|privileged)" | sort | tr "\n" " "); echo "$v"; [ "$v" = "apparmor=unconfined systempaths=unconfined " ]'

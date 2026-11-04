@@ -75,6 +75,12 @@ restart_with() {
   docker compose -f "$compose" up -d --quiet-pull || true
 }
 
+# copy_in <host dir> <container dir>: copy as dev (root in t3-dev has no CHOWN).
+copy_in() {
+  dev "mkdir -p $2"
+  tar -C "$1" -c . | docker exec -i -u dev t3-dev tar -C "$2" -x
+}
+
 wait_ready() {
   wait_for "rootless dockerd answers" 180 'docker info'
 }

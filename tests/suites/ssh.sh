@@ -20,7 +20,7 @@ check_host "zsh is the login shell" "ssh ${ssh_opts[*]} dev@127.0.0.1 'echo \$SH
 check_host "password login refused" "! ssh -p 2222 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no dev@127.0.0.1 true"
 check_host "root login refused" "! ssh ${ssh_opts[*]} root@127.0.0.1 true"
 check_host "unknown key refused" "k=\$(mktemp -u) && ssh-keygen -q -t ed25519 -N '' -f \$k && ! ssh -p 2222 -i \$k -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes dev@127.0.0.1 true"
-check_host "local port forwarding works" "ssh ${ssh_opts[*]} -f -N -L 13773:127.0.0.1:2222 dev@127.0.0.1 && sleep 2 && ssh-keyscan -p 13773 127.0.0.1 2>/dev/null | grep -q ssh; s=\$?; pkill -f 'L 13773' ; exit \$s"
+check_host "local port forwarding works" "ssh ${ssh_opts[*]} -o ExitOnForwardFailure=yes -L 13773:127.0.0.1:2222 dev@127.0.0.1 'sleep 10' & sleep 4; ssh-keyscan -T 5 -p 13773 127.0.0.1 2>&1 | grep ssh-ed25519"
 check_host "remote port forwarding refused" "! timeout 15 ssh ${ssh_opts[*]} -o ExitOnForwardFailure=yes -R 2299:127.0.0.1:22 dev@127.0.0.1 true"
 check "host key persists in home" '[ -f ~/.ssh/host-keys/ssh_host_ed25519_key ]'
 fingerprint=$(ssh-keyscan -p 2222 127.0.0.1 2>/dev/null | ssh-keygen -lf - | awk '{print $2}' | sort | head -1)

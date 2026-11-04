@@ -22,7 +22,7 @@ check_host "log warns that the firewall is off" 'docker logs t3-dev-net 2>&1 | g
 section "Fail closed without NET_ADMIN"
 docker compose -f "$compose" down --timeout 60
 write_compose "$image"
-sed -i "/      - NET_ADMIN/d" "$compose"
+sed -i "s/      - NET_ADMIN/      - CHOWN/" "$compose"
 docker compose -f "$compose" up -d --quiet-pull || true
 sleep 15
 check_host "t3-dev does not start without a working firewall" '[ "$(docker inspect -f "{{.State.Running}}" t3-dev 2>/dev/null)" != true ]'

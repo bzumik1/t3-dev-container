@@ -7,6 +7,8 @@ export XDG_RUNTIME_DIR=/run/user/1000
 export DOCKERD_ROOTLESS_ROOTLESSKIT_NET="${DOCKERD_ROOTLESS_ROOTLESSKIT_NET:-slirp4netns}"
 export DOCKERD_ROOTLESS_ROOTLESSKIT_PORT_DRIVER="${DOCKERD_ROOTLESS_ROOTLESSKIT_PORT_DRIVER:-builtin}"
 export DOCKERD_ROOTLESS_ROOTLESSKIT_DISABLE_HOST_LOOPBACK=true
+# Without this, --network host containers share this container's loopback (T3 server, supervisor socket).
+export DOCKERD_ROOTLESS_ROOTLESSKIT_DETACH_NETNS=false
 
 rm -f "$XDG_RUNTIME_DIR/docker.pid" "$XDG_RUNTIME_DIR/docker.sock"
 rm -rf "$XDG_RUNTIME_DIR/dockerd-rootless"

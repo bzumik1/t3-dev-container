@@ -21,10 +21,10 @@ check "dev cannot regain capabilities via setpriv" '! setpriv --inh-caps=+net_ad
 
 section "Container configuration"
 check_host "image and t3-dev default to uid 1000 (docker exec, healthcheck)" '[ "$(docker exec t3-dev id -u)" = 1000 ] && [ "$(docker inspect -f "{{.Config.User}}" t3-dev)" = 1000:1000 ]'
-check_host "t3-dev adds only SETUID and SETGID" '[ "$(docker inspect -f "{{json .HostConfig.CapAdd}}" t3-dev)" = "[\"SETUID\",\"SETGID\"]" ]'
-check_host "t3-dev-net adds only NET_ADMIN, read-only, no-new-privileges" '[ "$(docker inspect -f "{{json .HostConfig.CapAdd}} {{.HostConfig.ReadonlyRootfs}}" t3-dev-net)" = "[\"NET_ADMIN\"] true" ] && docker inspect -f "{{.HostConfig.SecurityOpt}}" t3-dev-net | grep -q no-new-privileges'
-check_host "t3-dev-init adds only CHOWN, has no network and finished" '[ "$(docker inspect -f "{{json .HostConfig.CapAdd}} {{.HostConfig.NetworkMode}} {{.State.Status}} {{.State.ExitCode}}" t3-dev-init)" = "[\"CHOWN\"] none exited 0" ]'
-check_host "t3-dev-net runs as root only for the firewall: its only process holds the namespace" 'docker top t3-dev-net -o comm | tail -n +2 | sort | tr "\n" " " | grep -qx "sleep tini "'
+check_host "t3-dev adds only SETUID and SETGID" 'v=$(docker inspect -f "{{range .HostConfig.CapAdd}}{{.}} {{end}}" t3-dev); echo "$v"; [ "$v" = "SETUID SETGID " ]'
+check_host "t3-dev-net adds only NET_ADMIN, read-only, no-new-privileges" 'v=$(docker inspect -f "{{range .HostConfig.CapAdd}}{{.}} {{end}}{{.HostConfig.ReadonlyRootfs}} {{.HostConfig.SecurityOpt}}" t3-dev-net); echo "$v"; [ "$v" = "NET_ADMIN true [no-new-privileges:true]" ]'
+check_host "t3-dev-init adds only CHOWN, has no network and finished" 'v=$(docker inspect -f "{{range .HostConfig.CapAdd}}{{.}} {{end}}{{.HostConfig.NetworkMode}} {{.State.Status}} {{.State.ExitCode}}" t3-dev-init); echo "$v"; [ "$v" = "CHOWN none exited 0" ]'
+check_host "t3-dev-net only holds the namespace (tini + sleep)" 'v=$(docker top t3-dev-net -eo comm | tail -n +2 | sort | tr "\n" " "); echo "$v"; [ "$v" = "sleep tini " ]'
 check_host "not privileged" '[ "$(docker inspect -f "{{.HostConfig.Privileged}}" t3-dev)" = false ]'
 check_host "no host Docker socket mounted" '! docker inspect -f "{{range .Mounts}}{{.Source}} {{end}}" t3-dev | grep -q docker.sock'
 check_host "memory, CPU and pids limits applied" '[ "$(docker inspect -f "{{.HostConfig.Memory}} {{.HostConfig.PidsLimit}}" t3-dev)" = "8589934592 4096" ]'

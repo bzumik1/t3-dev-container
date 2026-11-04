@@ -13,8 +13,7 @@ check "published port inside" 'docker run -d --name web -p 18080:80 nginx:alpine
 check "firewall active" 'curl -fsS -o /dev/null --max-time 15 https://github.com && ! curl -sS -o /dev/null --max-time 5 http://192.168.1.1/'
 check "privileges dropped" '[ "$(ps -eo uid= | tr -d " " | sort -u)" = 1000 ]'
 wait_for "sshd listens" 90 'ssh-keyscan -p 2222 127.0.0.1 2>/dev/null | grep -q ssh-ed25519'
-docker cp "$root/tests/testcontainers-java" t3-dev:/workspace/testcontainers-java
-as_root "chown -R 1000:1000 /workspace/testcontainers-java"
+copy_in "$root/tests/testcontainers-java" /workspace/testcontainers-java
 check "Testcontainers with PostgreSQL" '
   url=$(curl -fsSL https://services.gradle.org/versions/current | jq -r .downloadUrl) &&
   curl -fsSL "$url" -o /tmp/gradle.zip && unzip -q /tmp/gradle.zip -d /tmp/gradle &&
