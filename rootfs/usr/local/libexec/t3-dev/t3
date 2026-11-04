@@ -44,5 +44,5 @@ case "${T3_CONNECT:-true}" in
     ;;
 esac
 
-cd /workspace
+cd /workspace || exit 1
 exec t3 serve --host 127.0.0.1 --port 3773 --no-browser

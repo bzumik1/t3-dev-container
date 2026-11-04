@@ -1,4 +1,6 @@
 #!/bin/bash
+# Commands passed to check/wait_for run inside the container, so they are single-quoted on purpose.
+# shellcheck disable=SC2016
 # Starts the image from compose.yml with exactly its security options (paths moved
 # to a temp directory) and checks the container from the inside.
 # Usage: tests/ci.sh <image>
