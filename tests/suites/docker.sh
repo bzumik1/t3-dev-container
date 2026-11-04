@@ -5,7 +5,7 @@ wait_ready
 section "Rootless Docker inside"
 check "docker info reports rootless" 'docker info --format "{{.SecurityOptions}}" | grep -q rootless'
 check "docker run hello-world" 'docker run --rm hello-world'
-check "nested root is uid 1000 on the outside" 'docker run -d --name s alpine sleep 300 >/dev/null && sleep 2 && u=$(ps -o uid= -C sleep | tr -d " " | sort -u); docker rm -f s >/dev/null; echo "$u"; [ "$u" = 1000 ]'
+check "nested root is uid 1000 on the outside" 'docker run -d --name nested-sleep alpine sleep 300 >/dev/null && sleep 2 && u=$(ps -o uid= -C sleep | tr -d " " | sort -u); docker rm -f nested-sleep >/dev/null; echo "$u"; [ "$u" = 1000 ]'
 check "published port reachable on localhost" 'docker run -d --name web -p 18080:80 nginx:alpine && for i in $(seq 30); do curl -fsS localhost:18080 >/dev/null && break; sleep 1; done; curl -fsS localhost:18080 | grep -q nginx; s=$?; docker rm -f web; exit $s'
 check "docker build" 'd=$(mktemp -d) && printf "FROM alpine\nRUN echo ok > /ok\n" > $d/Dockerfile && docker build -q -t t3-dev-build-test $d && docker run --rm t3-dev-build-test cat /ok | grep -qx ok'
 check "docker buildx build" 'd=$(mktemp -d) && printf "FROM alpine\nRUN echo buildx > /b\n" > $d/Dockerfile && docker buildx build --load -q -t t3-dev-buildx-test $d'
