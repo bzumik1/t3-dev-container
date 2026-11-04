@@ -1,0 +1,95 @@
+name: t3-dev
+
+services:
+  t3-dev:
+    image: ghcr.io/bzumik1/t3-dev-container:latest
+    container_name: t3-dev
+    hostname: t3-dev
+    restart: unless-stopped
+    environment:
+      SERVER_NAME: T3 Dev
+      GITHUB_USER: ""
+      GIT_NAME: ""
+      GIT_EMAIL: ""
+      TZ: Europe/Prague
+      T3_CONNECT: "true"
+    ports:
+      - "2222:2222"
+    volumes:
+      - /DATA/AppData/t3-dev/home:/home/dev
+      - /DATA/AppData/t3-dev/workspace:/workspace
+      - /DATA/AppData/t3-dev/docker:/home/dev/.local/share/docker
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - NET_ADMIN
+      - NET_RAW
+      - SETGID
+      - SETPCAP
+      - SETUID
+    security_opt:
+      - seccomp=/DATA/AppData/t3-dev/seccomp.json
+      - apparmor=unconfined
+      - systempaths=unconfined
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    mem_limit: 8g
+    memswap_limit: 8g
+    cpus: 10
+    pids_limit: 4096
+    ulimits:
+      nofile:
+        soft: 1048576
+        hard: 1048576
+    stop_grace_period: 60s
+    x-casaos:
+      envs:
+        - container: SERVER_NAME
+          description:
+            en_us: Name of this server in T3 Code and T3 Connect
+        - container: GITHUB_USER
+          description:
+            en_us: GitHub user whose public keys may log in over SSH (port 2222); empty turns SSH off
+        - container: GIT_NAME
+          description:
+            en_us: Git author name
+        - container: GIT_EMAIL
+          description:
+            en_us: Git author e-mail
+        - container: TZ
+          description:
+            en_us: Time zone
+        - container: T3_CONNECT
+          description:
+            en_us: Sign in to T3 Connect on first start (the link appears in the container log)
+      ports:
+        - container: "2222"
+          description:
+            en_us: SSH (key-only)
+      volumes:
+        - container: /home/dev
+          description:
+            en_us: Home directory with agent sign-ins and tools
+        - container: /workspace
+          description:
+            en_us: Projects
+        - container: /home/dev/.local/share/docker
+          description:
+            en_us: Data of the Docker inside the container (images, containers); no need to back up
+
+x-casaos:
+  architectures:
+    - amd64
+  main: t3-dev
+  author: bzumik1
+  developer: bzumik1
+  category: Developer
+  title:
+    en_us: T3 Dev
+  tagline:
+    en_us: Secure dev server for T3 Code and AI coding agents
+  description:
+    en_us: T3 Code with Codex, Claude Code and OpenCode, Java, Node and rootless Docker inside an unprivileged container. Reach it through T3 Connect; SSH on port 2222. https://github.com/bzumik1/t3-dev-container

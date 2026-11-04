@@ -1,0 +1,58 @@
+#!/bin/bash
+# Runs briefly as root: prepares volumes, the server name, the time zone and the
+# firewall, then drops to the dev user with every capability gone except
+# SETUID/SETGID in the bounding set (needed by newuidmap/newgidmap for rootless Docker).
+set -euo pipefail
+
+DEV_UID=1000
+DEV_GID=1000
+DEV_HOME=/home/dev
+
+log() { printf '[t3-dev] %s\n' "$*"; }
+
+if [ "$(id -u)" != 0 ]; then
+  log "Kontejner musí startovat jako root (oprávnění se po přípravě zahodí)."
+  exit 1
+fi
+
+for dir in "$DEV_HOME" "$DEV_HOME/.local" "$DEV_HOME/.local/share" "$DEV_HOME/.local/share/docker" /workspace; do
+  mkdir -p "$dir"
+  if [ "$(stat -c %u "$dir")" != "$DEV_UID" ]; then
+    chown "$DEV_UID:$DEV_GID" "$dir"
+  fi
+done
+chmod 0755 "$DEV_HOME"
+chmod 0710 "$DEV_HOME/.local/share/docker"
+
+if [ ! -e "$DEV_HOME/.zshrc" ]; then
+  log "První start: připravuji domovský adresář."
+  cp -rn /etc/skel/. "$DEV_HOME/"
+  chown -R "$DEV_UID:$DEV_GID" "$DEV_HOME"
+fi
+
+server_name="${SERVER_NAME:-T3 Dev}"
+server_name="${server_name//\"/}"
+printf 'PRETTY_HOSTNAME="%s"\n' "$server_name" > /etc/machine-info
+
+if [ -n "${TZ:-}" ] && [ -f "/usr/share/zoneinfo/$TZ" ]; then
+  ln -sf "/usr/share/zoneinfo/$TZ" /etc/localtime
+  echo "$TZ" > /etc/timezone
+fi
+
+rm -rf /run/user/$DEV_UID
+install -d -m 0700 -o "$DEV_UID" -g "$DEV_GID" /run/user/$DEV_UID
+
+case "${FIREWALL:-on}" in
+  off|false|0)
+    log "VAROVÁNÍ: firewall je vypnutý (FIREWALL=off), kontejner vidí domácí síť i ostatní kontejnery."
+    ;;
+  *)
+    /usr/local/libexec/t3-dev/firewall
+    ;;
+esac
+
+log "Spouštím služby jako uživatel dev (server: $server_name)."
+exec setpriv \
+  --reuid="$DEV_UID" --regid="$DEV_GID" --init-groups \
+  --inh-caps=-all --bounding-set=-all,+setuid,+setgid \
+  -- /usr/bin/tini -g -- /usr/bin/supervisord -n -c /etc/t3-dev/supervisord.conf

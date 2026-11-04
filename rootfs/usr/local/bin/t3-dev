@@ -1,0 +1,80 @@
+#!/bin/bash
+# Helper for the t3-dev container: agents, status and health.
+set -uo pipefail
+
+log() { printf '[t3-dev] %s\n' "$*"; }
+
+as_dev() {
+  if [ "$(id -u)" = 0 ]; then
+    exec setpriv --reuid=1000 --regid=1000 --init-groups --inh-caps=-all --bounding-set=-all,+setuid,+setgid -- "$0" "$@"
+  fi
+}
+
+install_one() {
+  local name="$1" check="$2" url="$3" shell="$4"
+  if [ -x "$check" ]; then return 0; fi
+  log "Instaluji $name..."
+  if curl -fsSL --retry 3 "$url" | "$shell" >/tmp/t3-dev-install-"$name".log 2>&1; then
+    log "$name nainstalován."
+  else
+    log "Instalace $name selhala (log: /tmp/t3-dev-install-$name.log)."
+    return 1
+  fi
+}
+
+install_agents() {
+  local failed=0
+  install_one t3 "$HOME/.local/bin/t3" https://t3.codes/install.sh sh || failed=1
+  install_one codex "$HOME/.local/bin/codex" https://chatgpt.com/codex/install.sh sh || failed=1
+  install_one claude "$HOME/.local/bin/claude" https://claude.ai/install.sh bash || failed=1
+  install_one opencode "$HOME/.opencode/bin/opencode" https://opencode.ai/install bash || failed=1
+  return $failed
+}
+
+update_agents() {
+  log "Aktualizuji agenty..."
+  t3 update || log "t3 update selhal."
+  curl -fsSL https://chatgpt.com/codex/install.sh | sh >/dev/null || log "Aktualizace Codexu selhala."
+  claude update || log "claude update selhal."
+  opencode upgrade || log "opencode upgrade selhal."
+}
+
+status() {
+  echo "Server:  $(sed -n 's/^PRETTY_HOSTNAME="\(.*\)"$/\1/p' /etc/machine-info 2>/dev/null)"
+  echo
+  supervisorctl -c /etc/t3-dev/supervisord.conf status
+  echo
+  for tool in t3 codex claude opencode gh docker java node; do
+    printf '%-9s %s\n' "$tool" "$( (command -v "$tool" >/dev/null && "$tool" --version 2>&1 | head -1) || echo 'není nainstalován')"
+  done
+  echo
+  t3 connect status 2>&1 | sed 's/\x1b\[[0-9;?]*[a-zA-Z]//g' | grep -E 'Authorization|Environment link|reach' || true
+}
+
+health() {
+  supervisorctl -c /etc/t3-dev/supervisord.conf status dockerd t3 2>/dev/null | grep -q RUNNING || exit 1
+  docker info >/dev/null 2>&1 || exit 1
+}
+
+usage() {
+  cat <<'EOF'
+Použití: t3-dev <příkaz>
+
+  status           stav služeb, verze nástrojů a T3 Connect
+  install-agents   nainstaluje chybějící T3, Codex, Claude Code a OpenCode
+  update-agents    aktualizuje T3, Codex, Claude Code a OpenCode
+  connect          znovu spustí přihlášení k T3 Connect
+  restart <služba> restartuje dockerd, sshd nebo t3
+  health           kontrola pro Docker HEALTHCHECK
+EOF
+}
+
+case "${1:-help}" in
+  install-agents) as_dev "$@"; install_agents ;;
+  update-agents) as_dev "$@"; update_agents ;;
+  status) as_dev "$@"; status ;;
+  connect) as_dev "$@"; yes y | t3 connect link --headless && supervisorctl -c /etc/t3-dev/supervisord.conf restart t3 ;;
+  restart) as_dev "$@"; supervisorctl -c /etc/t3-dev/supervisord.conf restart "${2:?Zadejte službu: dockerd, sshd nebo t3}" ;;
+  health) as_dev "$@"; health ;;
+  *) usage ;;
+esac

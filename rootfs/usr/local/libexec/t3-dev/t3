@@ -1,0 +1,48 @@
+#!/bin/bash
+# Prepares the dev user's home (git, agent instructions, agents) and runs the
+# T3 Code server on loopback only; other devices reach it through T3 Connect.
+set -uo pipefail
+
+log() { printf '[t3-dev] %s\n' "$*"; }
+
+if [ -n "${GIT_NAME:-}" ]; then git config --global user.name "$GIT_NAME"; fi
+if [ -n "${GIT_EMAIL:-}" ]; then git config --global user.email "$GIT_EMAIL"; fi
+git config --global credential.https://github.com.helper '!gh auth git-credential'
+git config --global credential.https://gist.github.com.helper '!gh auth git-credential'
+git config --global init.defaultBranch main
+
+for target in "$HOME/.codex/AGENTS.md" "$HOME/.claude/CLAUDE.md" "$HOME/.config/opencode/AGENTS.md"; do
+  if [ ! -e "$target" ]; then
+    mkdir -p "$(dirname "$target")"
+    cp /etc/t3-dev/AGENTS.md "$target"
+  fi
+done
+
+/usr/local/bin/t3-dev install-agents || log "Některého agenta se nepodařilo nainstalovat, zkusím to při dalším startu."
+
+if ! command -v t3 >/dev/null 2>&1; then
+  log "T3 Code není nainstalovaný, zkusím to znovu za minutu."
+  sleep 60
+  exit 1
+fi
+
+case "${T3_CONNECT:-true}" in
+  true|1|yes|on)
+    if ! t3 connect status 2>&1 | grep -q 'Authorization: stored credential'; then
+      log "=================================================================="
+      log " T3 Connect: otevřete odkaz níže a schvalte přihlášení svým účtem."
+      log "=================================================================="
+      until yes y | t3 connect link --headless; do
+        log "T3 Connect: přihlášení se nedokončilo, zkouším znovu za 10 s."
+        sleep 10
+      done
+      log "T3 Connect: přihlášeno."
+    fi
+    ;;
+  *)
+    log "T3 Connect je vypnutý (T3_CONNECT=${T3_CONNECT}). Server poslouchá jen uvnitř kontejneru."
+    ;;
+esac
+
+cd /workspace
+exec t3 serve --host 127.0.0.1 --port 3773 --no-browser

@@ -1,0 +1,5 @@
+prefix=${HOME}/.local
+ignore-scripts=true
+min-release-age=3
+fund=false
+update-notifier=false

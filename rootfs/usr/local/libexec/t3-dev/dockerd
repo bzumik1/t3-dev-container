@@ -1,0 +1,14 @@
+#!/bin/bash
+# Rootless Docker daemon of the dev user. Data live on their own volume
+# (~/.local/share/docker), so they never sit on the container's overlay.
+set -euo pipefail
+
+export XDG_RUNTIME_DIR=/run/user/1000
+export DOCKERD_ROOTLESS_ROOTLESSKIT_NET="${DOCKERD_ROOTLESS_ROOTLESSKIT_NET:-slirp4netns}"
+export DOCKERD_ROOTLESS_ROOTLESSKIT_PORT_DRIVER="${DOCKERD_ROOTLESS_ROOTLESSKIT_PORT_DRIVER:-builtin}"
+export DOCKERD_ROOTLESS_ROOTLESSKIT_DISABLE_HOST_LOOPBACK=true
+
+rm -f "$XDG_RUNTIME_DIR/docker.pid" "$XDG_RUNTIME_DIR/docker.sock"
+rm -rf "$XDG_RUNTIME_DIR/dockerd-rootless"
+
+exec dockerd-rootless.sh --data-root "$HOME/.local/share/docker" --log-level "${DOCKERD_LOG_LEVEL:-warn}"

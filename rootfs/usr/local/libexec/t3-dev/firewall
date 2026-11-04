@@ -1,0 +1,55 @@
+#!/bin/bash
+# Outbound firewall in the container's own network namespace: the internet stays
+# open, private networks (home LAN, the Docker host, other containers, Tailscale)
+# are rejected. Replies to inbound connections (SSH) stay allowed. Nested rootless
+# Docker sends its traffic from this namespace too, so the same rules cover it.
+# FIREWALL_ALLOW takes extra destinations to allow, separated by spaces or commas.
+set -euo pipefail
+
+log() { printf '[t3-dev] %s\n' "$*"; }
+
+blocked_v4="10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 169.254.0.0/16 100.64.0.0/10 192.0.0.0/24 198.18.0.0/15 224.0.0.0/4 240.0.0.0/4"
+blocked_v6="fc00::/7 fe80::/10 ff00::/8"
+allow="${FIREWALL_ALLOW:-}"
+allow="${allow//,/ }"
+
+pick_backend() {
+  for candidate in iptables-nft iptables-legacy; do
+    if "$candidate" -w -L OUTPUT -n >/dev/null 2>&1; then
+      echo "${candidate#iptables}"
+      return 0
+    fi
+  done
+  return 1
+}
+
+if ! backend=$(pick_backend); then
+  log "CHYBA: nelze nastavit firewall (iptables nefunguje). Kontejner potřebuje cap_add NET_ADMIN."
+  log "Pokud víte, co děláte, vypněte ho proměnnou FIREWALL=off."
+  exit 1
+fi
+ipt="iptables$backend"
+ip6t="ip6tables$backend"
+
+apply() {
+  local tool="$1" blocked="$2" reject="$3" family="$4"
+  "$tool" -w -F OUTPUT
+  "$tool" -w -A OUTPUT -o lo -j ACCEPT
+  "$tool" -w -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+  for cidr in $allow; do
+    case "$cidr" in
+      *:*) [ "$family" = 6 ] && "$tool" -w -A OUTPUT -d "$cidr" -j ACCEPT ;;
+      *)   [ "$family" = 4 ] && "$tool" -w -A OUTPUT -d "$cidr" -j ACCEPT ;;
+    esac
+  done
+  for cidr in $blocked; do
+    "$tool" -w -A OUTPUT -d "$cidr" -j REJECT --reject-with "$reject"
+  done
+}
+
+apply "$ipt" "$blocked_v4" icmp-admin-prohibited 4
+if "$ip6t" -w -L OUTPUT -n >/dev/null 2>&1; then
+  apply "$ip6t" "$blocked_v6" icmp6-adm-prohibited 6
+fi
+
+log "Firewall zapnutý ($ipt): internet povolen, domácí síť a ostatní kontejnery blokované.${allow:+ Výjimky: $allow}"

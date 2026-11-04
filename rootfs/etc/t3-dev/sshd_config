@@ -1,0 +1,29 @@
+Port 2222
+ListenAddress 0.0.0.0
+HostKey /home/dev/.ssh/host-keys/ssh_host_ed25519_key
+PidFile /run/user/1000/sshd.pid
+
+AllowUsers dev
+PermitRootLogin no
+PubkeyAuthentication yes
+AuthorizedKeysFile .ssh/authorized_keys .ssh/authorized_keys.github
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PermitEmptyPasswords no
+UsePAM no
+StrictModes yes
+MaxAuthTries 3
+LoginGraceTime 30
+
+AllowTcpForwarding local
+AllowAgentForwarding no
+AllowStreamLocalForwarding no
+X11Forwarding no
+PermitTunnel no
+GatewayPorts no
+PermitUserEnvironment no
+
+ClientAliveInterval 60
+ClientAliveCountMax 3
+PrintMotd no
+Subsystem sftp internal-sftp
