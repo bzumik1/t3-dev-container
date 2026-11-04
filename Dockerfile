@@ -28,7 +28,7 @@ RUN apt-get update \
  && apt-get update \
  && apt-get install -y --no-install-recommends \
       docker-ce docker-ce-cli containerd.io docker-ce-rootless-extras docker-buildx-plugin docker-compose-plugin \
-      uidmap slirp4netns iptables iproute2 \
+      uidmap libcap2-bin slirp4netns iptables iproute2 \
       "temurin-${JAVA_MAJOR}-jdk" nodejs gh mise \
       git git-lfs openssh-server openssh-client supervisor tini tzdata locales \
       build-essential pkg-config jq yq ripgrep fd-find fzf tmux vim less htop \
@@ -49,7 +49,9 @@ RUN userdel -r ubuntu 2>/dev/null || true \
  && mkdir -p /workspace /run/sshd /home/dev/.local/share/docker \
  && chown -R dev:dev /workspace /home/dev \
  && ln -sf /run/user/1000/docker.sock /var/run/docker.sock \
- && find / -xdev -type f -perm /6000 ! -path /usr/bin/newuidmap ! -path /usr/bin/newgidmap -exec chmod a-s {} + \
+ && find / -xdev -type f -perm /6000 -exec chmod a-s {} + \
+ && setcap cap_setuid=ep /usr/bin/newuidmap \
+ && setcap cap_setgid=ep /usr/bin/newgidmap \
  && rm -f /etc/update-motd.d/* /etc/legal
 
 COPY rootfs/ /

@@ -1,7 +1,7 @@
 #!/bin/bash
 # Runs briefly as root: prepares volumes, the server name, the time zone and the
 # firewall, then drops to the dev user with every capability gone except
-# SETUID/SETGID in the bounding set (needed by newuidmap/newgidmap for rootless Docker).
+# SETUID/SETGID in the bounding set (newuidmap/newgidmap get them through file capabilities for rootless Docker).
 set -euo pipefail
 
 DEV_UID=1000

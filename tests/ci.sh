@@ -56,7 +56,8 @@ echo "== Isolation"
 check "services run as uid 1000" '[ "$(ps -o uid= -p "$(pgrep -o supervisord)" | tr -d " ")" = 1000 ]'
 check "bounding set holds only SETUID and SETGID" 'grep -q "^CapBnd:\s*00000000000000c0$" /proc/$(pgrep -o supervisord)/status'
 check "no effective capabilities" 'grep -q "^CapEff:\s*0000000000000000$" /proc/$(pgrep -o supervisord)/status'
-check "only newuidmap and newgidmap are setuid" '[ "$(find / -xdev -type f -perm /6000 2>/dev/null | sort | tr "\n" " ")" = "/usr/bin/newgidmap /usr/bin/newuidmap " ]'
+check "no setuid or setgid binaries" '[ -z "$(find / -xdev -type f -perm /6000 2>/dev/null)" ]'
+check "newuidmap/newgidmap carry only file capabilities" 'getcap /usr/bin/newuidmap | grep -q "cap_setuid=ep" && getcap /usr/bin/newgidmap | grep -q "cap_setgid=ep"'
 check "no sudo" '! command -v sudo'
 check "server name from SERVER_NAME" 'grep -qx "PRETTY_HOSTNAME=\"CI Test\"" /etc/machine-info'
 
