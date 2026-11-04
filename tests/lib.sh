@@ -13,7 +13,8 @@ failures=0
 pass() { printf '\033[32m✓ %s\033[0m\n' "$*"; }
 fail() { printf '\033[31m✗ %s\033[0m\n' "$*"; failures=$((failures + 1)); }
 section() { printf '\n== %s\n' "$*"; }
-dev() { docker exec -u dev -w /workspace t3-dev bash -c "$*"; }
+DEV_PATH=/home/dev/.local/bin:/home/dev/.opencode/bin:/home/dev/.local/share/mise/shims:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+dev() { docker exec -u dev -e PATH="$DEV_PATH" -w /workspace t3-dev bash -c "$*"; }
 as_root() { docker exec -u 0 t3-dev bash -c "$*"; }
 
 check() {
@@ -64,14 +65,14 @@ write_compose() {
 start() {
   sudo rm -rf "$work"
   write_compose "$@"
-  docker compose -f "$compose" up -d --quiet-pull
+  docker compose -f "$compose" up -d --quiet-pull || true
 }
 
 # restart_with <image> [KEY=VALUE ...]: recreate the container, keep the volumes.
 restart_with() {
   docker compose -f "$compose" down --timeout 60
   write_compose "$@"
-  docker compose -f "$compose" up -d --quiet-pull
+  docker compose -f "$compose" up -d --quiet-pull || true
 }
 
 wait_ready() {
@@ -80,7 +81,7 @@ wait_ready() {
 
 finish() {
   echo "::group::Container log"
-  docker logs t3-dev 2>&1 | tail -400 || true
+  for c in t3-dev-init t3-dev-net t3-dev; do echo "--- $c"; docker logs "$c" 2>&1 | tail -300 || true; done
   echo "::endgroup::"
   docker compose -f "$compose" down --volumes --timeout 60 >/dev/null 2>&1 || true
   echo

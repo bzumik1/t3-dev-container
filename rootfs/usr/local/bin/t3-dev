@@ -1,12 +1,14 @@
 #!/bin/bash
 # Helper for the t3-dev container: agents, status and health.
+export PATH="/home/dev/.local/bin:/home/dev/.opencode/bin:/home/dev/.local/share/mise/shims:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 set -uo pipefail
 
 log() { printf '[t3-dev] %s\n' "$*"; }
 
 as_dev() {
-  if [ "$(id -u)" = 0 ]; then
-    exec setpriv --reuid=1000 --regid=1000 --init-groups --inh-caps=-all --bounding-set=-all,+setuid,+setgid -- "$0" "$@"
+  if [ "$(/usr/bin/id -u)" != 1000 ]; then
+    echo "t3-dev běží jen jako uživatel dev: docker exec -u dev t3-dev t3-dev $*" >&2
+    exit 1
   fi
 }
 

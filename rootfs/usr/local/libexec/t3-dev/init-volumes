@@ -1,0 +1,22 @@
+#!/bin/bash
+# One-shot init container (root, only CAP_CHOWN, no network): hands the roots of
+# the volumes, and the mount-point directories Docker creates for the nested
+# Docker volume, to dev. Never follows symlinks; dev's processes are not running
+# yet (t3-dev starts only after this container has finished).
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+unset BASH_ENV ENV CDPATH
+set -euo pipefail
+
+log() { printf '[t3-dev-init] %s\n' "$*"; }
+
+for dir in /home/dev /workspace /home/dev/.local /home/dev/.local/share /home/dev/.local/share/docker; do
+  if [ -L "$dir" ]; then
+    log "VAROVÁNÍ: $dir je symlink, vlastníka neměním."
+    continue
+  fi
+  if [ -d "$dir" ] && [ "$(stat -c %u "$dir")" != 1000 ]; then
+    chown -h 1000:1000 "$dir"
+    log "$dir předán uživateli dev."
+  fi
+done
+log "Svazky připravené."

@@ -1,0 +1,18 @@
+#!/bin/bash
+# Entry point of t3-dev-net: applies the firewall, marks it ready for the
+# healthcheck, then only holds the network namespace that t3-dev joins.
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+unset BASH_ENV ENV CDPATH
+set -euo pipefail
+
+case "${FIREWALL:-on}" in
+  off|false|0)
+    printf '[t3-dev-net] VAROVÁNÍ: firewall je vypnutý (FIREWALL=off), t3-dev vidí domácí síť i ostatní kontejnery.\n'
+    ;;
+  *)
+    /usr/local/libexec/t3-dev/firewall
+    ;;
+esac
+
+touch /run/t3-dev-net-ready
+exec sleep infinity

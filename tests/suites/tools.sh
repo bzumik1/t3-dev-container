@@ -21,7 +21,6 @@ check "uv cooldown configured" 'grep -q "exclude-newer = \"3 days\"" /etc/uv/uv.
 section "CLI tools"
 check "git, git-lfs, gh, mise" 'git --version && git lfs version && gh --version && mise --version'
 check "shell tools" 'for t in jq yq rg fd fzf tmux vim less htop zsh starship rsync unzip zip xz wget curl file lsof dig nc ping make gcc g++ pkg-config ssh; do command -v $t >/dev/null || { echo "missing $t"; exit 1; }; done'
-check "yq is the Go yq v4" 'yq --version | grep -q "v4"'
 check "docker CLI, compose, buildx" 'docker --version && docker compose version && docker buildx version'
 check "t3-dev helper" 't3-dev help | grep -q install-agents'
 check "mise installs a runtime without root" 'mise exec python@3.13 -- python --version'

@@ -13,7 +13,7 @@ check_host "log explains SSH is off" 'docker logs t3-dev 2>&1 | grep -q "SSH je 
 section "SSH with GITHUB_USER"
 restart_with "$image" "GITHUB_USER=bzumik1"
 wait_for "sshd listens with keys from GitHub" 90 'ssh-keyscan -p 2222 127.0.0.1 2>/dev/null | grep -q ssh-ed25519 && [ -s ~/.ssh/authorized_keys.github ]'
-docker exec -u dev t3-dev bash -c "install -d -m700 ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys" < "$key.pub"
+docker exec -i -u dev t3-dev bash -c "install -d -m700 ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys" < "$key.pub"
 check_host "login with an authorized key" "ssh ${ssh_opts[*]} dev@127.0.0.1 'id -u' | grep -qx 1000"
 check_host "login shell has the full environment" "ssh ${ssh_opts[*]} dev@127.0.0.1 'docker info >/dev/null && java -version && node -v && command -v t3-dev'"
 check_host "zsh is the login shell" "ssh ${ssh_opts[*]} dev@127.0.0.1 'echo \$SHELL' | grep -q zsh"

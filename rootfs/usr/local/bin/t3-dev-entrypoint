@@ -1,62 +1,33 @@
 #!/bin/bash
-# Runs briefly as root: prepares volumes, the server name, the time zone and the
-# firewall, then drops to the dev user with every capability gone except
-# SETUID/SETGID in the bounding set (newuidmap/newgidmap get them through file capabilities for rootless Docker).
+# Entry point of t3-dev. Runs as dev (UID 1000) from the very start: no root at
+# run time. The bounding set holds only SETUID/SETGID (compose cap_add), which
+# newuidmap/newgidmap need through their file capabilities for rootless Docker.
 set -euo pipefail
-
-DEV_UID=1000
-DEV_GID=1000
-DEV_HOME=/home/dev
 
 log() { printf '[t3-dev] %s\n' "$*"; }
 
-if [ "$(id -u)" != 0 ]; then
-  log "Kontejner musí startovat jako root (oprávnění se po přípravě zahodí)."
+if [ "$(/usr/bin/id -u)" != 1000 ]; then
+  log "Kontejner t3-dev musí běžet jako uživatel dev (user: \"1000:1000\")."
   exit 1
 fi
 
-for dir in "$DEV_HOME" "$DEV_HOME/.local" "$DEV_HOME/.local/share" "$DEV_HOME/.local/share/docker" /workspace; do
-  mkdir -p "$dir"
-  if [ "$(stat -c %u "$dir")" != "$DEV_UID" ]; then
-    chown "$DEV_UID:$DEV_GID" "$dir"
-  fi
-done
-chmod 0755 "$DEV_HOME"
-chmod 0710 "$DEV_HOME/.local/share/docker"
-
-if [ ! -e "$DEV_HOME/.zshrc" ]; then
-  log "První start: připravuji domovský adresář."
-  cp -rn /etc/skel/. "$DEV_HOME/"
-  chown -R "$DEV_UID:$DEV_GID" "$DEV_HOME"
+if [ ! -w "$HOME" ] || [ ! -w /workspace ]; then
+  log "CHYBA: svazky nepatří uživateli dev. Spusťte kontejner t3-dev-init (je v compose.yml)."
+  exit 1
 fi
 
+if [ ! -e "$HOME/.zshrc" ]; then
+  log "První start: připravuji domovský adresář."
+  cp -r --update=none /etc/skel/. "$HOME/"
+fi
+
+mkdir -p "$HOME/.config/t3-dev"
 server_name="${SERVER_NAME:-T3 Dev}"
 server_name="${server_name//\"/}"
-printf 'PRETTY_HOSTNAME="%s"\n' "$server_name" > /etc/machine-info
+printf 'PRETTY_HOSTNAME="%s"\n' "$server_name" > "$HOME/.config/t3-dev/machine-info"
 
-if [ -n "${TZ:-}" ] && [ -f "/usr/share/zoneinfo/$TZ" ]; then
-  ln -sf "/usr/share/zoneinfo/$TZ" /etc/localtime
-  echo "$TZ" > /etc/timezone
-fi
+find "$XDG_RUNTIME_DIR" -mindepth 1 -delete 2>/dev/null || true
+chmod 0700 "$XDG_RUNTIME_DIR"
 
-# supervisord reopens /dev/stdout for each service; the container log pipes
-# belong to root, so hand them to dev before dropping privileges.
-chown "$DEV_UID" /proc/self/fd/1 /proc/self/fd/2 2>/dev/null || true
-
-rm -rf /run/user/$DEV_UID
-install -d -m 0700 -o "$DEV_UID" -g "$DEV_GID" /run/user/$DEV_UID
-
-case "${FIREWALL:-on}" in
-  off|false|0)
-    log "VAROVÁNÍ: firewall je vypnutý (FIREWALL=off), kontejner vidí domácí síť i ostatní kontejnery."
-    ;;
-  *)
-    /usr/local/libexec/t3-dev/firewall
-    ;;
-esac
-
-log "Spouštím služby jako uživatel dev (server: $server_name)."
-exec setpriv \
-  --reuid="$DEV_UID" --regid="$DEV_GID" --init-groups \
-  --inh-caps=-all --bounding-set=-all,+setuid,+setgid \
-  -- /usr/bin/tini -g -- /usr/bin/supervisord -n -c /etc/t3-dev/supervisord.conf
+log "Spouštím služby (server: $server_name)."
+exec /usr/bin/tini -g -- /usr/bin/supervisord -n -c /etc/t3-dev/supervisord.conf

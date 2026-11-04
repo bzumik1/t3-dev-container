@@ -28,7 +28,7 @@ RUN apt-get update \
  && apt-get update \
  && apt-get install -y --no-install-recommends \
       docker-ce docker-ce-cli containerd.io docker-ce-rootless-extras docker-buildx-plugin docker-compose-plugin \
-      uidmap libcap2-bin slirp4netns iptables iproute2 \
+      uidmap libcap2-bin bubblewrap socat slirp4netns iptables iproute2 \
       "temurin-${JAVA_MAJOR}-jdk" nodejs gh mise \
       git git-lfs openssh-server openssh-client supervisor tini tzdata locales \
       build-essential pkg-config jq yq ripgrep fd-find fzf tmux vim less htop \
@@ -46,7 +46,9 @@ RUN userdel -r ubuntu 2>/dev/null || true \
  && usermod -p '*' dev \
  && echo "dev:100000:65536" > /etc/subuid \
  && echo "dev:100000:65536" > /etc/subgid \
- && mkdir -p /workspace /run/sshd /home/dev/.local/share/docker \
+ && mkdir -p /workspace /home/dev/.local/share/docker /home/dev/.config/t3-dev \
+ && install -d -m 0700 -o 1000 -g 1000 /run/user/1000 \
+ && ln -sf /home/dev/.config/t3-dev/machine-info /etc/machine-info \
  && chown -R dev:dev /workspace /home/dev \
  && ln -sf /run/user/1000/docker.sock /var/run/docker.sock \
  && find / -xdev -type f -perm /6000 -exec chmod a-s {} + \
@@ -64,7 +66,10 @@ ENV HOME=/home/dev \
     DOCKER_HOST=unix:///run/user/1000/docker.sock \
     TESTCONTAINERS_RYUK_CONTAINER_PRIVILEGED=false \
     TESTCONTAINERS_HOST_OVERRIDE=localhost \
-    PATH=/home/dev/.local/bin:/home/dev/.opencode/bin:/home/dev/.local/share/mise/shims:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    NPM_CONFIG_IGNORE_SCRIPTS=true \
+    NPM_CONFIG_MIN_RELEASE_AGE=3
+
+USER 1000:1000
 
 WORKDIR /workspace
 

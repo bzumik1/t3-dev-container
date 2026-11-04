@@ -11,4 +11,4 @@ export DOCKERD_ROOTLESS_ROOTLESSKIT_DISABLE_HOST_LOOPBACK=true
 rm -f "$XDG_RUNTIME_DIR/docker.pid" "$XDG_RUNTIME_DIR/docker.sock"
 rm -rf "$XDG_RUNTIME_DIR/dockerd-rootless"
 
-exec dockerd-rootless.sh --data-root "$HOME/.local/share/docker" --log-level "${DOCKERD_LOG_LEVEL:-warn}"
+exec dockerd-rootless.sh --config-file /etc/t3-dev/docker-daemon.json --data-root "$HOME/.local/share/docker" --log-level "${DOCKERD_LOG_LEVEL:-warn}"
