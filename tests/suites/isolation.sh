@@ -21,7 +21,7 @@ check "dev cannot regain capabilities via setpriv" '! setpriv --inh-caps=+net_ad
 
 section "Container configuration"
 check_host "image and t3-dev default to uid 1000 (docker exec, healthcheck)" '[ "$(docker exec t3-dev id -u)" = 1000 ] && [ "$(docker inspect -f "{{.Config.User}}" t3-dev)" = 1000:1000 ]'
-check_host "t3-dev adds only SETUID and SETGID" 'v=$(docker inspect -f "{{range .HostConfig.CapAdd}}{{.}}\n{{end}}" t3-dev | sort | tr "\n" " " | sed "s/^ *//"); echo "$v"; [ "$v" = "CAP_SETGID CAP_SETUID " ]'
+check_host "t3-dev adds only SETUID and SETGID" 'v=$(docker inspect -f "{{range .HostConfig.CapAdd}}{{println .}}{{end}}" t3-dev | sort | tr "\n" " " | sed "s/^ *//"); echo "$v"; [ "$v" = "CAP_SETGID CAP_SETUID " ]'
 check_host "t3-dev-net adds only NET_ADMIN, read-only, no-new-privileges" 'v=$(docker inspect -f "{{range .HostConfig.CapAdd}}{{.}} {{end}}{{.HostConfig.ReadonlyRootfs}} {{.HostConfig.SecurityOpt}}" t3-dev-net); echo "$v"; [ "$v" = "CAP_NET_ADMIN true [no-new-privileges:true]" ]'
 check_host "t3-dev-init adds only CHOWN, has no network and finished" 'v=$(docker inspect -f "{{range .HostConfig.CapAdd}}{{.}} {{end}}{{.HostConfig.NetworkMode}} {{.State.Status}} {{.State.ExitCode}}" t3-dev-init); echo "$v"; [ "$v" = "CAP_CHOWN none exited 0" ]'
 check_host "t3-dev-net only holds the namespace (tini + sleep)" 'v=$(docker top t3-dev-net -o pid,comm | tail -n +2 | awk "{print \$2}" | sort | tr "\n" " "); echo "$v"; [ "$v" = "sleep tini " ]'
