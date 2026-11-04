@@ -1,0 +1,31 @@
+# shellcheck shell=bash disable=SC2016,SC2154
+start "$image"
+
+section "Languages"
+check "java 25 (Temurin)" 'java -version 2>&1 | grep -q "\"25" && java -version 2>&1 | grep -qi temurin'
+check "javac 25" 'javac -version 2>&1 | grep -q "^javac 25"'
+check "node 24" 'node -v | grep -q "^v24\."'
+check "npm >= 11.10" 'v=$(npm -v); [ "$(printf "%s\n11.10.0\n" "$v" | sort -V | head -1)" = 11.10.0 ]'
+check "pnpm" 'pnpm -v'
+check "python3 for scripts" 'python3 --version'
+
+section "Supply-chain settings"
+check "npm min-release-age 3" '[ "$(npm config get min-release-age)" = 3 ]'
+check "npm ignore-scripts" '[ "$(npm config get ignore-scripts)" = true ]'
+check "npm blocks install scripts" 'd=$(mktemp -d) && cd $d && npm init -y >/dev/null && node -e "const p=require(\"./package.json\");p.scripts={postinstall:\"touch /tmp/pwned\"};require(\"fs\").writeFileSync(\"package.json\",JSON.stringify(p))" && npm install >/dev/null 2>&1; [ ! -e /tmp/pwned ]'
+check "npm refuses too-fresh versions" 'd=$(mktemp -d) && cd $d && npm init -y >/dev/null && v=$(npm view typescript@next version --min-release-age=0) && ! npm install "typescript@$v" >/dev/null 2>&1'
+check "npm global installs go to ~/.local" '[ "$(npm config get prefix)" = "$HOME/.local" ] && npm install -g cowsay@1.6.0 >/dev/null 2>&1 && [ -x ~/.local/bin/cowsay ]'
+check "pnpm minimum release age" '[ "$(cd /tmp && pnpm config get minimumReleaseAge)" = 4320 ]'
+check "uv cooldown configured" 'grep -q "exclude-newer = \"3 days\"" /etc/uv/uv.toml'
+
+section "CLI tools"
+check "git, git-lfs, gh, mise" 'git --version && git lfs version && gh --version && mise --version'
+check "shell tools" 'for t in jq yq rg fd fzf tmux vim less htop zsh starship rsync unzip zip xz wget curl file lsof dig nc ping make gcc g++ pkg-config ssh; do command -v $t >/dev/null || { echo "missing $t"; exit 1; }; done'
+check "yq is the Go yq v4" 'yq --version | grep -q "v4"'
+check "docker CLI, compose, buildx" 'docker --version && docker compose version && docker buildx version'
+check "t3-dev helper" 't3-dev help | grep -q install-agents'
+check "mise installs a runtime without root" 'mise exec python@3.13 -- python --version'
+check "mise installs node 22 next to 24" 'mise exec node@22 -- node -v | grep -q "^v22"'
+check "locale UTF-8" 'locale | grep -q "UTF-8" && python3 -c "print(\"čeština\")" | grep -q čeština'
+check "zsh config loads cleanly" 'zsh -ic "exit" 2>&1 | { ! grep -qi "error\|not found"; }'
+check "agent guidance installed on first start" 'for f in ~/.codex/AGENTS.md ~/.claude/CLAUDE.md ~/.config/opencode/AGENTS.md; do for i in $(seq 60); do [ -s $f ] && break; sleep 2; done; [ -s $f ] || { echo "missing $f"; exit 1; }; done'

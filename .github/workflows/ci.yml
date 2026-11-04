@@ -20,27 +20,32 @@ env:
   FRESH: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
 
 jobs:
-  build-test-publish:
+  lint:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
-    permissions:
-      contents: read
-      packages: write
-      id-token: write
-      attestations: write
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
+        with:
+          persist-credentials: false
+      - name: ShellCheck
+        run: shellcheck -x -P tests tests/run.sh tests/lib.sh tests/suites/*.sh rootfs/usr/local/bin/* rootfs/usr/local/libexec/t3-dev/*
+      - name: Hadolint
+        run: docker run --rm -i hadolint/hadolint hadolint --failure-threshold error - < Dockerfile
+      - name: compose.yml is valid
+        run: docker compose -f compose.yml config -q
       - name: seccomp.json matches its generator
         run: |
           node scripts/generate-seccomp.mjs > /tmp/seccomp.json
-          diff -u seccomp.json /tmp/seccomp.json || { echo "::warning::Docker's default seccomp profile changed upstream; run scripts/generate-seccomp.mjs > seccomp.json"; }
+          diff -u seccomp.json /tmp/seccomp.json || echo "::warning::Docker's default seccomp profile changed upstream; run scripts/generate-seccomp.mjs > seccomp.json"
 
-      - name: Shell scripts pass ShellCheck
-        run: shellcheck rootfs/usr/local/bin/* rootfs/usr/local/libexec/t3-dev/* tests/ci.sh
-
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-
       - name: Build
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
@@ -51,14 +56,105 @@ jobs:
           tags: t3-dev:test
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: Export the image for the test jobs
+        run: |
+          docker image ls t3-dev:test
+          docker save t3-dev:test | zstd -T0 -3 -q -o "$RUNNER_TEMP/image.tar.zst"
+          ls -lh "$RUNNER_TEMP/image.tar.zst"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: image
+          path: ${{ runner.temp }}/image.tar.zst
+          compression-level: 0
+          retention-days: 1
 
+  test:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        suite:
+          - isolation
+          - docker
+          - firewall
+          - firewall-options
+          - ssh
+          - tools
+          - testcontainers-java
+          - testcontainers-node
+          - agents
+          - persistence
+          - upgrade
+          - resources
+          - seccomp
+          - docker-27
+    name: test (${{ matrix.suite }})
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Docker 27.5.1 on the runner, as on ZimaOS 1.7
+        if: matrix.suite == 'docker-27'
+        run: |
+          sudo install -d -m 0755 /etc/apt/keyrings
+          curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo tee /etc/apt/keyrings/docker.asc >/dev/null
+          echo "deb [signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu noble stable" | sudo tee /etc/apt/sources.list.d/docker.list
+          sudo apt-get update -q
+          engine=$(apt-cache madison docker-ce | awk '$3 ~ /^5:27\.5\.1-/ {print $3; exit}')
+          cli=$(apt-cache madison docker-ce-cli | awk '$3 ~ /^5:27\.5\.1-/ {print $3; exit}')
+          sudo apt-get install -y -q --allow-downgrades "docker-ce=$engine" "docker-ce-cli=$cli" containerd.io docker-compose-plugin
+          sudo systemctl restart docker
+          docker version
       - name: Make the runner behave like ZimaOS (no AppArmor userns restriction)
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: image
+          path: ${{ runner.temp }}
+      - name: Load the image
+        run: zstd -dc "$RUNNER_TEMP/image.tar.zst" | docker load
+      - name: Run ${{ matrix.suite }}
+        run: tests/run.sh t3-dev:test ${{ matrix.suite }}
 
-      - name: Test with the security options of compose.yml
-        run: tests/ci.sh t3-dev:test
+  nfnn:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [nfnn-backend, nfnn-frontend, nfnn-e2e, nfnn-mcp]
+    name: real project (${{ matrix.suite }})
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Make the runner behave like ZimaOS (no AppArmor userns restriction)
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: image
+          path: ${{ runner.temp }}
+      - name: Load the image
+        run: zstd -dc "$RUNNER_TEMP/image.tar.zst" | docker load
+      - name: Run ${{ matrix.suite }}
+        run: tests/run.sh t3-dev:test ${{ matrix.suite }}
 
-      - name: Scan for vulnerabilities
+  scan:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: image
+          path: ${{ runner.temp }}
+      - name: Load the image
+        run: zstd -dc "$RUNNER_TEMP/image.tar.zst" | docker load
+      - name: Critical vulnerabilities with a fix fail the build
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: t3-dev:test
@@ -66,7 +162,31 @@ jobs:
           ignore-unfixed: true
           exit-code: "1"
           format: table
+      - name: Report of high vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: t3-dev:test
+          severity: HIGH
+          ignore-unfixed: true
+          exit-code: "0"
+          format: table
+          skip-setup-trivy: true
 
+  publish:
+    needs: [lint, test, scan]
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - name: Tags
         id: meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
@@ -79,18 +199,13 @@ jobs:
           labels: |
             org.opencontainers.image.title=T3 Dev
             org.opencontainers.image.description=Secure dev server for T3 Code and AI coding agents with rootless Docker inside
-
-      - name: Log in to ghcr.io
-        if: github.event_name != 'pull_request'
-        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Publish
+      - name: Publish (layers come from the tested build's cache)
         id: push
-        if: github.event_name != 'pull_request'
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
@@ -98,13 +213,9 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
           provenance: mode=max
           sbom: true
-
-      - name: Attest provenance
-        if: github.event_name != 'pull_request'
-        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-name: ${{ env.IMAGE }}
           subject-digest: ${{ steps.push.outputs.digest }}

@@ -50,6 +50,7 @@ RUN userdel -r ubuntu 2>/dev/null || true \
  && chown -R dev:dev /workspace /home/dev \
  && ln -sf /run/user/1000/docker.sock /var/run/docker.sock \
  && find / -xdev -type f -perm /6000 -exec chmod a-s {} + \
+ && getcap -r /usr /opt 2>/dev/null | awk "{print \$1}" | xargs -r -n1 setcap -r \
  && setcap cap_setuid=ep /usr/bin/newuidmap \
  && setcap cap_setgid=ep /usr/bin/newgidmap \
  && rm -f /etc/update-motd.d/* /etc/legal
