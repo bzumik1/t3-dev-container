@@ -39,6 +39,10 @@ if [ -n "${TZ:-}" ] && [ -f "/usr/share/zoneinfo/$TZ" ]; then
   echo "$TZ" > /etc/timezone
 fi
 
+# supervisord reopens /dev/stdout for each service; the container log pipes
+# belong to root, so hand them to dev before dropping privileges.
+chown "$DEV_UID" /proc/self/fd/1 /proc/self/fd/2 2>/dev/null || true
+
 rm -rf /run/user/$DEV_UID
 install -d -m 0700 -o "$DEV_UID" -g "$DEV_GID" /run/user/$DEV_UID
 
