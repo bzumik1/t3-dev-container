@@ -61,6 +61,7 @@ ENV HOME=/home/dev \
     SHELL=/usr/bin/zsh \
     XDG_RUNTIME_DIR=/run/user/1000 \
     DOCKER_HOST=unix:///run/user/1000/docker.sock \
+    TESTCONTAINERS_RYUK_CONTAINER_PRIVILEGED=false \
     PATH=/home/dev/.local/bin:/home/dev/.opencode/bin:/home/dev/.local/share/mise/shims:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 WORKDIR /workspace
