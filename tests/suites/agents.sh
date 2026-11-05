@@ -7,6 +7,7 @@ wait_for "codex installed" 300 '[ -x ~/.local/bin/codex ]'
 wait_for "claude installed" 300 '[ -x ~/.local/bin/claude ]'
 wait_for "opencode installed" 300 '[ -x ~/.opencode/bin/opencode ]'
 check "agents run" 't3 --version && codex --version && claude --version && opencode --version'
+wait_for "OpenCode is at least 2.0.18 (T3 needs it)" 300 'v=$(~/.opencode/bin/opencode --version); [ "$(printf "%s\n2.0.18\n" "$v" | sort -V | head -1)" = 2.0.18 ]'
 for sh in bash zsh; do
   check_host "agents and the dev environment are on PATH in an interactive $sh from docker exec" "printf 'command -v t3 codex claude opencode >/dev/null && [ \"\$DOCKER_HOST\" = unix:///run/user/1000/docker.sock ] && [ \"\$NPM_CONFIG_IGNORE_SCRIPTS\" = true ] && echo ENV-OK\nexit\n' | docker exec -i t3-dev $sh -i 2>/dev/null | grep -qx ENV-OK"
 done
