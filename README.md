@@ -112,7 +112,7 @@ Kontejner **není privilegovaný**, nemá přístup k Dockeru hostitele a **za b
 
 ## Aktualizace
 
-Image se každý týden přestaví s bezpečnostními aktualizacemi (`ghcr.io/bzumik1/t3-dev-container:latest`). Publikuje se jen tehdy, když projdou všechny testy. Na ZimaOS ho aktualizujete v UI aplikace, nebo přes SSH:
+Image se každý týden přestaví s bezpečnostními aktualizacemi (`ghcr.io/bzumik1/t3-dev-container:latest`). Publikuje se jen tehdy, když projdou všechny testy, a jen po vašem schválení: GitHub vám pošle žádost o schválení nasazení do prostředí `release` (Actions → běh CI → Review deployments). Bez schválení se nový image nepublikuje. Na ZimaOS ho aktualizujete v UI aplikace, nebo přes SSH:
 
 ```bash
 sudo docker pull ghcr.io/bzumik1/t3-dev-container:latest
@@ -121,6 +121,10 @@ sudo docker pull ghcr.io/bzumik1/t3-dev-container:latest
 a restartem aplikace.
 
 Když nový image potřebuje nový `compose.yml` (proměnná `T3_DEV_COMPOSE`), kontejnery se nespustí a v logu je „compose.yml je zastaralý“. Pak importujte aktuální `compose.yml` a stáhněte `seccomp.json` znovu podle kroku 1 instalace. Po přechodu z verze 3 můžete smazat nepoužívaný adresář se starými klíči: `sudo rm -rf /DATA/AppData/t3-dev/ssh`. Agenti se aktualizují sami, ručně `t3-dev update-agents`.
+
+## Instrukce pro agenty
+
+Agenti dostávají popis prostředí a jeho pravidel ([`rootfs/etc/t3-dev/AGENTS.md`](rootfs/etc/t3-dev/AGENTS.md)) na začátek svých globálních instrukcí (`~/.codex/AGENTS.md`, `~/.claude/CLAUDE.md`, `~/.config/opencode/AGENTS.md`). Blok mezi značkami `t3-dev:begin` a `t3-dev:end` se při každém startu obnoví z image, vlastní text pod ním zůstane. Když agent narazí na omezení kontejneru, má navrhnout změnu jako issue nebo PR v tomto repozitáři, ale nikdy ji sám nesloučit ani neschválit publikaci.
 
 ## Pomocník `t3-dev`
 

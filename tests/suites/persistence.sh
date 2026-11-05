@@ -10,11 +10,19 @@ wait_ready
 check "home, workspace and nested images survive a restart" '[ -f /workspace/marker ] && [ -f ~/marker ] && docker image inspect alpine >/dev/null && docker volume inspect keepvol >/dev/null'
 check "services are back after the restart" 'pgrep -x sshd && { pgrep -f "t3 serve" || pgrep -f t3-dev/t3; }'
 
+section "Agent instructions are managed and refreshed, the owner's own text stays"
+for f in .codex/AGENTS.md .claude/CLAUDE.md .config/opencode/AGENTS.md; do
+  check "managed block at the top of ~/$f" "head -1 ~/$f | grep -q '^<!-- t3-dev:begin' && grep -q 'Never merge, approve or push' ~/$f"
+done
+dev 'printf "\nMy own note for Claude\n" >> ~/.claude/CLAUDE.md && sed -i "s/^You run inside/STALE You run inside/" ~/.claude/CLAUDE.md'
+
 section "recreate (new container, same volumes)"
 restart_with "$image" "GITHUB_USER=bzumik1" "SERVER_NAME=Renamed"
 wait_ready
 check "state survives a recreate" '[ -f /workspace/marker ] && [ -f ~/marker ] && [ -x ~/.local/bin/t3 ] && docker image inspect alpine >/dev/null'
 check "new SERVER_NAME applied" 'grep -qx "PRETTY_HOSTNAME=\"Renamed\"" /etc/machine-info'
+wait_for "the managed block was refreshed after a recreate" 120 '! grep -q "^STALE" ~/.claude/CLAUDE.md && [ "$(grep -c "t3-dev:begin" ~/.claude/CLAUDE.md)" = 1 ]'
+check "the owner's own text in the instructions file is kept" 'grep -qx "My own note for Claude" ~/.claude/CLAUDE.md'
 check "user edits to .zshrc are kept" 'echo "# mine" >> ~/.zshrc' 
 restart_with "$image" "GITHUB_USER=bzumik1"
 wait_ready

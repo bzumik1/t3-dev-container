@@ -79,6 +79,8 @@ jobs:
           diff -u seccomp.json /tmp/seccomp.json
       - name: README pins the current seccomp.json hash
         run: grep -q "$(sha256sum seccomp.json | cut -d" " -f1)" README.md
+      - name: Publishing needs the owner's approval (release environment)
+        run: yq -e '.jobs.publish.environment == "release"' .github/workflows/ci.yml
       - name: README does not promise a harmless root exec
         run: "! grep -q \"nemá žádná užitečná oprávnění\" README.md"
       - name: No floating @latest installs in the Dockerfile
@@ -237,6 +239,7 @@ jobs:
   publish:
     needs: [gate]
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    environment: release
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
