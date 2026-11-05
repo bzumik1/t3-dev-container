@@ -39,8 +39,9 @@ install_agents() {
   install_one t3 "$HOME/.local/bin/t3" https://t3.codes/install.sh sh || failed=1
   install_one codex "$HOME/.local/bin/codex" https://chatgpt.com/codex/install.sh sh || failed=1
   install_one claude "$HOME/.local/bin/claude" https://claude.ai/install.sh bash || failed=1
-  install_one opencode "$HOME/.opencode/bin/opencode" https://opencode.ai/install bash || failed=1
-  # The installer only installs OpenCode 1; T3 needs OpenCode 2 (>= 2.0.18).
+  install_one opencode "$HOME/.opencode/bin/opencode" https://opencode.ai/v2/install bash || failed=1
+  # Older images left OpenCode 1 in the persistent home; T3 needs OpenCode 2 (>= 2.0.18).
+  # Only OpenCode 1 knows --major, OpenCode 2 rejects it.
   if [ -x "$HOME/.opencode/bin/opencode" ] && "$HOME/.opencode/bin/opencode" --version 2>/dev/null | grep -q '^1\.'; then
     log "Přecházím na OpenCode 2..."
     "$HOME/.opencode/bin/opencode" upgrade --major >/tmp/t3-dev-install-opencode-major.log 2>&1 \
@@ -54,7 +55,7 @@ update_agents() {
   t3 update || log "t3 update selhal."
   curl -fsSL https://chatgpt.com/codex/install.sh | sh >/dev/null || log "Aktualizace Codexu selhala."
   claude update || log "claude update selhal."
-  opencode upgrade --major || log "opencode upgrade selhal."
+  opencode upgrade || log "opencode upgrade selhal."
 }
 
 status() {
