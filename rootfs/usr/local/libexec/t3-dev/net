@@ -26,6 +26,9 @@ if [ ! -d "$shared" ] || [ ! -w "$shared" ]; then
   log "CHYBA: chybí svazek $shared (compose.yml)."
   exit 1
 fi
+# ZimaOS creates missing bind-mount directories world-writable (0777). The
+# directory belongs to root, so root can tighten it without CAP_FOWNER.
+chmod 0755 "$shared"
 rm -f "$marker"
 
 case "${FIREWALL:-on}" in

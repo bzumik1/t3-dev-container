@@ -73,6 +73,15 @@ check_host "control: stdio forwarding to the container localhost works" "ssh ${s
 check_host "forwarding to an internet host is refused by PermitOpen (not by the firewall)" "ssh ${ssh_opts[*]} -W github.com:443 dev@127.0.0.1 </dev/null 2>&1 | grep -qi 'administratively prohibited'"
 check_host "remote port forwarding refused" "! timeout 15 ssh ${ssh_opts[*]} -o ExitOnForwardFailure=yes -R 2299:127.0.0.1:22 dev@127.0.0.1 true"
 
+section "A world-writable shared directory (as ZimaOS creates it) is tightened by t3-dev-net"
+docker compose -f "$compose" down --timeout 60 >/dev/null 2>&1 || true
+sudo chmod 0777 "$work/shared"
+check_host "control: the shared directory is world-writable before the start" "[ \"\$(stat -c %a '$work/shared')\" = 777 ]"
+docker compose -f "$compose" up -d --quiet-pull || true
+wait_ready
+check_host "t3-dev-net tightened the shared directory to 0755" "[ \"\$(stat -c %a '$work/shared')\" = 755 ]"
+wait_for "sshd runs with the tightened directory" 90 'ssh-keyscan -p 2222 127.0.0.1 2>/dev/null | grep -q ssh-ed25519'
+
 section "Host key persists"
 check "host key lives in home" '[ -f ~/.ssh/host-keys/ssh_host_ed25519_key ]'
 fingerprint=$(ssh-keyscan -p 2222 127.0.0.1 2>/dev/null | ssh-keygen -lf - | awk '{print $2}' | sort | head -1)
