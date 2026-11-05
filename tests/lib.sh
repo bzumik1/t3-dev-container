@@ -63,6 +63,7 @@ write_compose() {
 
 # start <image> [KEY=VALUE ...]: fresh volumes, container up.
 start() {
+  if [ -f "$compose" ]; then docker compose -f "$compose" down --volumes --timeout 30 >/dev/null 2>&1 || true; fi
   sudo rm -rf "$work"
   write_compose "$@"
   docker compose -f "$compose" up -d --quiet-pull || true

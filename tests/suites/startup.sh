@@ -3,6 +3,7 @@ python3 -m http.server 18999 --bind 0.0.0.0 >/dev/null 2>&1 &
 host_server=$!
 
 section "t3-dev waits for the firewall (host or Docker daemon restart, where depends_on does not apply)"
+if [ -f "$compose" ]; then docker compose -f "$compose" down --volumes --timeout 30 >/dev/null 2>&1 || true; fi
 sudo rm -rf "$work"
 write_compose "$image"
 python3 - "$compose" <<'PY'

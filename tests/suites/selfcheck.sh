@@ -8,6 +8,7 @@ refuses() {
 }
 
 section "Sandbox self-check in the entrypoint"
+if [ -f "$compose" ]; then docker compose -f "$compose" down --volumes --timeout 30 >/dev/null 2>&1 || true; fi
 sudo rm -rf "$work"
 write_compose "$image"
 sed -i 's/^      - SETGID$/      - SETGID\n      - DAC_OVERRIDE/' "$compose"

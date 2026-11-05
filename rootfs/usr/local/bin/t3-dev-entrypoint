@@ -26,7 +26,7 @@ if [ -e /proc/sys/net/ipv6/conf/all/disable_ipv6 ] && [ "$(cat /proc/sys/net/ipv
   die "IPv6 není vypnuté (sysctls u t3-dev-net)."
 fi
 
-if [ ! -w "$HOME" ] || [ ! -w /workspace ]; then
+if [ ! -w "$HOME" ] || [ ! -w /workspace ] || [ "$(stat -c %u "$HOME/.local/share/docker" 2>/dev/null)" != 1000 ]; then
   die "svazky nepatří uživateli dev. Spusťte kontejner t3-dev-init (je v compose.yml)."
 fi
 
@@ -35,16 +35,18 @@ case "${FIREWALL_EXPECTED:-on}" in
     log "VAROVÁNÍ: nekontroluji firewall (FIREWALL_EXPECTED=off)."
     ;;
   *)
-    gateway=$(ip route | awk '/^default/ {print $3; exit}')
-    [ -n "$gateway" ] || die "kontejner nemá síť (t3-dev-net neběží?)."
+    # 198.18.0.0/15 (benchmarking) is always rejected by the firewall and never
+    # a sensible FIREWALL_ALLOW entry; without the firewall it just times out.
+    probe=198.18.255.254
+    ip route | grep -q "^default" || die "kontejner nemá síť (t3-dev-net neběží?)."
     firewall_ok=0
     for _ in $(seq 120); do
-      if python3 - "$gateway" <<'PY'
+      if python3 - "$probe" <<'PY'
 import errno, socket, sys
 s = socket.socket()
 s.settimeout(2)
 e = s.connect_ex((sys.argv[1], 9))
-sys.exit(0 if e in (errno.EHOSTUNREACH, errno.EPERM, errno.EACCES, errno.ENETUNREACH) else 1)
+sys.exit(0 if e in (errno.EHOSTUNREACH, errno.EPERM, errno.EACCES) else 1)
 PY
       then firewall_ok=1; break; fi
       sleep 1

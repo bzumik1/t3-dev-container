@@ -30,6 +30,9 @@ for entry in ${raw//,/ }; do
   ip="${BASH_REMATCH[1]}"; prefix="${BASH_REMATCH[4]:-32}"; port="${BASH_REMATCH[6]:-}"; proto="${BASH_REMATCH[8]:-tcp}"
   IFS=. read -r a b c d <<<"$ip"
   for octet in "$a" "$b" "$c" "$d"; do [ "$octet" -le 255 ] || die "FIREWALL_ALLOW: neplatná adresa '$entry'."; done
+  if [ "$a" = 198 ] && { [ "$b" = 18 ] || [ "$b" = 19 ]; }; then
+    die "FIREWALL_ALLOW: rozsah 198.18.0.0/15 je vyhrazený pro kontrolu firewallu."
+  fi
   if [ "$prefix" -lt 16 ] || [ "$prefix" -gt 32 ]; then
     die "FIREWALL_ALLOW: '$entry' je příliš široké (nejvýš /16). Pro vypnutí firewallu je FIREWALL=off."
   fi
