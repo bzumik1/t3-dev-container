@@ -31,6 +31,7 @@ if [ "$pids_max" = max ] || [ "$pids_max" -gt 8192 ]; then die "chybí pids_limi
 if [ "$mem_max" = max ]; then die "chybí mem_limit (compose.yml)."; fi
 if [ "$(cat /sys/fs/cgroup/memory.swap.max 2>/dev/null || echo 0)" != 0 ]; then die "memswap_limit musí být stejný jako mem_limit (compose.yml)."; fi
 if [ "$(cat /proc/self/oom_score_adj)" -lt 500 ]; then die "chybí oom_score_adj (compose.yml)."; fi
+if [ ! -e /sys/fs/cgroup/memory.swap.max ] && [ "$(wc -l < /proc/swaps)" -gt 1 ]; then log "VAROVÁNÍ: jádro neomezuje swap kontejneru (chybí memory.swap.max)."; fi
 if [ ! -d /proc/sys/kernel/yama ]; then log "Jádro nemá Yama: agenti jsou od procesů bez no_new_privs oddělení vlastním uživatelským jmenným prostorem."; fi
 unshare --user --map-current-user true 2>/dev/null || die "nelze vytvořit uživatelský jmenný prostor pro služby."
 if [ -e /proc/sys/net/ipv6/conf/all/disable_ipv6 ] && [ "$(cat /proc/sys/net/ipv6/conf/all/disable_ipv6)" != 1 ]; then
@@ -42,6 +43,7 @@ if [ ! -w "$HOME" ] || [ ! -w /workspace ] || [ -L "$docker_data" ] || [ "$(stat
   die "svazky nepatří uživateli dev. Spusťte kontejner t3-dev-init (je v compose.yml)."
 fi
 findmnt -rn --mountpoint "$docker_data" >/dev/null || die "$docker_data není samostatný svazek (compose.yml)."
+findmnt -rno OPTIONS --mountpoint /etc/t3-dev/shared | tr , '\n' | grep -qx ro || die "/etc/t3-dev/shared musí být připojený jen pro čtení (:ro v compose.yml)."
 
 case "${FIREWALL_EXPECTED:-on}" in
   off|false|0)

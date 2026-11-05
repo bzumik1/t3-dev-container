@@ -65,7 +65,7 @@ RUN userdel -r ubuntu 2>/dev/null || true \
  && getcap -r /usr /opt 2>/dev/null | awk "{print \$1}" | xargs -r -n1 setcap -r \
  && setcap cap_setuid=ep /usr/bin/newuidmap \
  && setcap cap_setgid=ep /usr/bin/newgidmap \
- && sed -i '1i if [ "$EUID" = 0 ]; then export HOME=/root PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; fi' /etc/bash.bashrc \
+ && sed -i '1i [ -r /etc/t3-dev/bash-guard ] \&\& . /etc/t3-dev/bash-guard' /etc/bash.bashrc \
  && rm -f /etc/update-motd.d/* /etc/legal
 
 COPY rootfs/ /

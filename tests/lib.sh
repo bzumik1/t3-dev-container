@@ -17,6 +17,14 @@ fail() { printf '\033[31m✗ %s\033[0m\n' "$*"; failures=$((failures + 1)); }
 section() { printf '\n== %s\n' "$*"; }
 DEV_PATH=/home/dev/.local/bin:/home/dev/.opencode/bin:/home/dev/.local/share/mise/shims:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 dev() { docker exec -u dev -e PATH="$DEV_PATH" -w /workspace t3-dev bash -c "$*"; }
+# agent: run a command where the agents run (no_new_privs, own user namespace).
+agent() { docker exec -u dev -e PATH="$DEV_PATH" -w /workspace t3-dev setpriv --no-new-privs unshare --user --map-current-user bash -c "$*"; }
+check_agent() {
+  local name="$1"; shift
+  local output
+  if output=$(agent "$@" 2>&1); then pass "$name"; else fail "$name"; printf '%s\n' "$output" | tail -60; fi
+}
+
 # put_file <path>: write stdin to a file inside t3-dev as dev and fail loudly if it ends up empty.
 put_file() {
   if ! docker exec -i -u dev t3-dev bash -c "cat > $1" || ! dev "[ -s $1 ]"; then fail "could not write $1 into the container"; fi

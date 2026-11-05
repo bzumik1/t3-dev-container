@@ -70,6 +70,29 @@ check_host "t3-dev does not start services on a marker in the old inode format" 
 sudo iptables -D DOCKER-USER -d 198.18.255.254 -j REJECT --reject-with icmp-admin-prohibited
 docker compose -f "$compose" down --timeout 30 >/dev/null 2>&1 || true
 
+section "A valid marker of another namespace is refused (R5 T2)"
+bridge_mode
+sudo iptables -I DOCKER-USER -d 198.18.255.254 -j REJECT --reject-with icmp-admin-prohibited
+docker compose -f "$compose" up -d --quiet-pull || true
+sleep 5
+foreign=$(docker run --rm --network none --entrypoint /usr/local/libexec/t3-dev/netns-id "$image")
+sudo sh -c "echo '$foreign' > '$work/shared/firewall'"
+check_host "control: t3-dev in bridge mode gets host unreachable for the probe" "docker exec t3-dev python3 -I -S -c 'import errno, socket, sys; s = socket.socket(); s.settimeout(3); sys.exit(0 if s.connect_ex((\"198.18.255.254\", 9)) == errno.EHOSTUNREACH else 1)'"
+sleep 25
+check_host "a valid marker of another namespace is refused" '! docker exec t3-dev pgrep -x supervisord >/dev/null 2>&1'
+own=$(docker exec t3-dev /usr/local/libexec/t3-dev/netns-id)
+sudo sh -c "echo '$own' > '$work/shared/firewall'"
+end=$((SECONDS + 150)); until docker exec t3-dev pgrep -x supervisord >/dev/null 2>&1 || [ $SECONDS -ge $end ]; do sleep 5; done
+check_host "control: the same setup starts once the marker names its own namespace" 'docker exec t3-dev pgrep -x supervisord >/dev/null'
+sudo iptables -D DOCKER-USER -d 198.18.255.254 -j REJECT --reject-with icmp-admin-prohibited
+docker compose -f "$compose" down --timeout 30 >/dev/null 2>&1 || true
+
+section "Keys volume must be read-only (R6 N3)"
+write_compose "$image"
+mutate 's#:/etc/t3-dev/shared:ro$#:/etc/t3-dev/shared#'
+docker compose -f "$compose" up -d --quiet-pull || true
+refuses "keys volume writable" "jen pro čtení"
+
 section "Resource limits must be present (N5)"
 write_compose "$image"
 mutate '/^    pids_limit: 4096$/d'

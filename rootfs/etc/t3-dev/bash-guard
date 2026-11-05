@@ -1,0 +1,11 @@
+# Sourced first by /etc/bash.bashrc (interactive bash only).
+# root: never read dev's files or use dev's PATH.
+if [ "$EUID" = 0 ]; then
+  export HOME=/root PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+fi
+# dev outside the agents' sandbox (e.g. docker exec -it t3-dev bash): move into
+# it before ~/.bashrc, which an agent may have changed, gets read.
+if [ "$EUID" = 1000 ] && { /usr/bin/grep -q '^NoNewPrivs:[[:space:]]*0' /proc/self/status \
+  || [ "$(/usr/bin/readlink /proc/self/ns/user)" = "$(/usr/bin/readlink /proc/1/ns/user 2>/dev/null)" ]; }; then
+  exec /usr/bin/setpriv --no-new-privs -- /usr/bin/unshare --user --map-current-user -- /bin/bash -i ${BASH_EXECUTION_STRING:+-c "$BASH_EXECUTION_STRING"}
+fi

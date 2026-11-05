@@ -4,6 +4,12 @@ if [ "$(/usr/bin/id -u)" != 1000 ]; then
   printf "t3-dev běží jen jako uživatel dev: docker exec -it t3-dev t3-dev shell\n" >&2
   exit 1
 fi
+# Every entry point, including an exec from the host, runs like the agents:
+# no_new_privs and an own user namespace, never next to supervisord.
+if [ "$(/usr/bin/awk '/^NoNewPrivs:/ {print $2}' /proc/self/status)" != 1 ] \
+  || [ "$(/usr/bin/readlink /proc/self/ns/user)" = "$(/usr/bin/readlink /proc/1/ns/user 2>/dev/null)" ]; then
+  exec /usr/bin/setpriv --no-new-privs -- /usr/bin/unshare --user --map-current-user -- /usr/local/bin/t3-dev "$@"
+fi
 export PATH="/home/dev/.local/bin:/home/dev/.opencode/bin:/home/dev/.local/share/mise/shims:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 set -uo pipefail
 
@@ -48,7 +54,7 @@ update_agents() {
 status() {
   echo "Server:  $(sed -n 's/^PRETTY_HOSTNAME="\(.*\)"$/\1/p' /etc/machine-info 2>/dev/null)"
   echo
-  supervisorctl -c /etc/t3-dev/supervisord.conf status
+  /usr/bin/python3 -I /usr/bin/supervisorctl -c /etc/t3-dev/supervisord.conf status
   echo
   for tool in t3 codex claude opencode gh docker java node; do
     printf '%-9s %s\n' "$tool" "$( (command -v "$tool" >/dev/null && "$tool" --version 2>&1 | head -1) || echo 'není nainstalován')"
@@ -59,7 +65,7 @@ status() {
 
 health() {
   PATH=/usr/sbin:/usr/bin:/sbin:/bin
-  [ "$(/usr/bin/supervisorctl -c /etc/t3-dev/supervisord.conf status dockerd t3 2>/dev/null | /usr/bin/grep -c RUNNING)" = 2 ] || exit 1
+  [ "$(/usr/bin/python3 -I /usr/bin/supervisorctl -c /etc/t3-dev/supervisord.conf status dockerd t3 2>/dev/null | /usr/bin/grep -c RUNNING)" = 2 ] || exit 1
   /usr/bin/curl -fsS --max-time 5 --unix-socket /run/user/1000/docker.sock http://localhost/_ping >/dev/null 2>&1 || exit 1
 }
 
@@ -78,12 +84,12 @@ EOF
 }
 
 case "${1:-help}" in
-  shell) exec /usr/bin/setpriv --no-new-privs -- /usr/bin/unshare --user --map-current-user -- /usr/bin/zsh -l ;;
+  shell) exec /usr/bin/zsh -l ;;
   install-agents) as_dev "$@"; install_agents ;;
   update-agents) as_dev "$@"; update_agents ;;
   status) as_dev "$@"; status ;;
-  connect) as_dev "$@"; yes y | t3 connect link --headless && supervisorctl -c /etc/t3-dev/supervisord.conf restart t3 ;;
-  restart) as_dev "$@"; supervisorctl -c /etc/t3-dev/supervisord.conf restart "${2:?Zadejte službu: dockerd, sshd nebo t3}" ;;
+  connect) as_dev "$@"; yes y | t3 connect link --headless && /usr/bin/python3 -I /usr/bin/supervisorctl -c /etc/t3-dev/supervisord.conf restart t3 ;;
+  restart) as_dev "$@"; /usr/bin/python3 -I /usr/bin/supervisorctl -c /etc/t3-dev/supervisord.conf restart "${2:?Zadejte službu: dockerd, sshd nebo t3}" ;;
   health) health ;;
   *) usage ;;
 esac

@@ -42,9 +42,30 @@ check "sshd logs verbosely (key fingerprints)" '/usr/sbin/sshd -T -f /etc/t3-dev
 check_host "login with the configured key" "ssh ${ssh_opts[*]} dev@127.0.0.1 'id -u' | grep -qx 1000"
 check_host "login shell has the full environment" "ssh ${ssh_opts[*]} dev@127.0.0.1 'docker info >/dev/null && java -version && node -v && command -v t3-dev'"
 check_host "SSH sessions run with no_new_privs" "ssh ${ssh_opts[*]} dev@127.0.0.1 'grep -q \"^NoNewPrivs:.*1\" /proc/self/status'"
+put_file /tmp/ptrace.py <<'PY'
+import ctypes, errno, os, sys
+libc = ctypes.CDLL(None, use_errno=True)
+pid = int(sys.argv[1])
+if libc.ptrace(16, pid, 0, 0) == 0:
+    os.waitpid(pid, 0)
+    libc.ptrace(17, pid, 0, 0)
+    sys.exit(0)
+e = ctypes.get_errno()
+sys.exit(2 if e == errno.EPERM else 1)
+PY
+sup=$(dev "pgrep -x supervisord")
+check_host "an SSH session cannot ptrace supervisord" "ssh ${ssh_opts[*]} dev@127.0.0.1 'python3 -I /tmp/ptrace.py $sup'; [ \$? = 2 ]"
+check_host "SSH sessions live in their own user namespace" "[ \"\$(ssh ${ssh_opts[*]} dev@127.0.0.1 readlink /proc/self/ns/user)\" != \"\$(docker exec t3-dev readlink /proc/1/ns/user)\" ]"
 check_host "zsh is the login shell" "ssh ${ssh_opts[*]} dev@127.0.0.1 'echo \$SHELL' | grep -q zsh"
 docker exec -i t3-dev bash -c "install -d -m700 ~/.ssh && cat >> ~/.ssh/authorized_keys" < "$other.pub"
 check_host "a key added by a dev process does not work" "! ssh -p 2222 -i $other -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -o ConnectTimeout=10 dev@127.0.0.1 true"
+sudo chmod g+w "$work/shared/authorized_keys"
+dev 'supervisorctl -c /etc/t3-dev/supervisord.conf restart sshd' >/dev/null 2>&1 || true
+sleep 5
+check_host "sshd refuses a group-writable keys file (StrictModes replacement)" '! ssh-keyscan -T 5 -p 2222 127.0.0.1 2>/dev/null | grep -q ssh && docker logs t3-dev 2>&1 | grep -q "zapisovatelný pro skupinu"'
+sudo chmod 0644 "$work/shared/authorized_keys"
+dev 'supervisorctl -c /etc/t3-dev/supervisord.conf restart sshd' >/dev/null 2>&1 || true
+wait_for "control: sshd back with a 0644 keys file" 60 'ssh-keyscan -p 2222 127.0.0.1 2>/dev/null | grep -q ssh-ed25519'
 check_host "password login refused" "! ssh -p 2222 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no dev@127.0.0.1 true"
 check_host "root login refused" "! ssh ${ssh_opts[*]} root@127.0.0.1 true"
 check_host "local port forwarding to the container works" "ssh ${ssh_opts[*]} -o ExitOnForwardFailure=yes -L 13773:127.0.0.1:2222 dev@127.0.0.1 'sleep 10' & sleep 4; ssh-keyscan -T 5 -p 13773 127.0.0.1 2>&1 | grep ssh-ed25519"

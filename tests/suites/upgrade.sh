@@ -23,7 +23,7 @@ check_host "t3-dev itself refuses an outdated compose.yml" 'docker logs t3-dev 2
 docker compose -f "$compose" down --volumes --timeout 30 >/dev/null 2>&1 || true
 write_compose "$image"
 mutate '/^  t3-dev-init:$/,/^  t3-dev-net:$/ s/T3_DEV_COMPOSE: "[0-9]*"/T3_DEV_COMPOSE: "1"/'
-check_host "t3-dev-init itself refuses an outdated compose.yml" '! docker compose -f "$compose" run --rm t3-dev-init 2>&1 | tee /dev/stderr | grep -q "Svazky připravené"'
+check_host "t3-dev-init itself refuses an outdated compose.yml" 'docker compose -f "$compose" run --rm t3-dev-init 2>&1 | grep -q "compose.yml je zastaralý"'
 docker compose -f "$compose" down --volumes --timeout 30 >/dev/null 2>&1 || true
 
 section "Upgrade from the published image"
