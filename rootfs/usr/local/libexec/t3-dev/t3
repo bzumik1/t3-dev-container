@@ -11,12 +11,7 @@ git config --global credential.https://github.com.helper '!gh auth git-credentia
 git config --global credential.https://gist.github.com.helper '!gh auth git-credential'
 git config --global init.defaultBranch main
 
-for target in "$HOME/.codex/AGENTS.md" "$HOME/.claude/CLAUDE.md" "$HOME/.config/opencode/AGENTS.md"; do
-  if [ ! -e "$target" ]; then
-    mkdir -p "$(dirname "$target")"
-    cp /etc/t3-dev/AGENTS.md "$target"
-  fi
-done
+/usr/local/libexec/t3-dev/agent-instructions || log "Instrukce pro agenty se nepodařilo obnovit."
 
 /usr/local/bin/t3-dev install-agents || log "Některého agenta se nepodařilo nainstalovat, zkusím to při dalším startu."
 

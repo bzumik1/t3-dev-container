@@ -1,0 +1,38 @@
+#!/bin/bash
+# Keeps the environment instructions for the agents up to date: on every start
+# the block between the t3-dev markers at the top of each agent's global
+# instructions file is replaced with /etc/t3-dev/AGENTS.md. Anything the owner
+# wrote outside the block stays as it is.
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+set -euo pipefail
+
+source=/etc/t3-dev/AGENTS.md
+begin='<!-- t3-dev:begin (managed by the t3-dev image, edits inside are replaced on start) -->'
+end='<!-- t3-dev:end -->'
+
+for target in "$HOME/.codex/AGENTS.md" "$HOME/.claude/CLAUDE.md" "$HOME/.config/opencode/AGENTS.md"; do
+  if [ -L "$target" ]; then
+    printf '[t3-dev] VAROVÁNÍ: %s je odkaz, instrukce pro agenty nepřepisuji.\n' "$target"
+    continue
+  fi
+  mkdir -p "$(dirname "$target")"
+  rest=""
+  if [ -f "$target" ]; then
+    rest=$(awk -v b="$begin" -v e="$end" '
+      $0 == b { skip = 1; next }
+      skip && $0 == e { skip = 0; next }
+      !skip { print }
+    ' "$target" | sed '/./,$!d')
+  fi
+  tmp="$target.t3-dev.$$"
+  {
+    echo "$begin"
+    cat "$source"
+    echo "$end"
+    if [ -n "$rest" ]; then
+      echo
+      printf '%s\n' "$rest"
+    fi
+  } > "$tmp"
+  mv -f "$tmp" "$target"
+done
