@@ -9,7 +9,7 @@ Postavené pro ZimaOS, ale funguje na libovolném Linuxu s Dockerem.
 - **T3 Code** s T3 Connect: server je dostupný z Macu, mobilu i webu bez otevřeného portu.
 - **Agenti:** Codex, Claude Code a OpenCode. Instalují se při prvním startu do domovského adresáře a dál se aktualizují samy. Přihlášení přežije restart i nový image.
 - **Docker uvnitř** (rootless) s Compose a Buildx: `docker run`, `docker compose` i Testcontainers.
-- **Jazyky:** Java 25 (Temurin), Node 24 s npm a pnpm, systémové knihovny pro Playwright Chromium. Další verze a jazyky přes [`mise`](https://mise.jdx.dev) bez roota.
+- **Jazyky:** Java 25 (Temurin), Node 24 s npm a pnpm, systémové knihovny pro Playwright Chromium a WebKit. Další verze a jazyky přes [`mise`](https://mise.jdx.dev) bez roota.
 - **Nástroje:** git, gh, build-essential, jq, yq, ripgrep, fd, fzf, tmux, vim, htop, zsh se starship, bubblewrap a další.
 - **SSH** na portu 2222, jen klíčem (veřejné klíče z GitHubu).
 
@@ -27,7 +27,7 @@ Postavené pro ZimaOS, ale funguje na libovolném Linuxu s Dockerem.
 
 3. **Přihlaste T3 Connect:** otevřete log kontejneru `t3-dev`. Při prvním startu se tam objeví odkaz `https://accounts.t3.codes/device?...` a kód. Otevřete ho a schvalte svým účtem. Schvalujte jen odkaz na `accounts.t3.codes` a jen hned po prvním startu, kdy ho čekáte: do logu může psát i kód uvnitř kontejneru. Server se pak objeví v T3 na všech vašich zařízeních.
 
-4. **Přihlaste agenty a GitHub:** v T3 otevřete nové vlákno na tomto serveru a přihlaste Codex (`codex login`), Claude (`claude auth login`), OpenCode (`opencode auth login`) a GitHub (`gh auth login`). Všechny používají přihlášení přes odkaz a kód, nic se nezadává do proměnných.
+4. **Přihlaste agenty a GitHub:** v T3 otevřete nové vlákno na tomto serveru a přihlaste Codex (`codex login`), Claude (`claude auth login`), OpenCode (`opencode auth login`) a GitHub. Pro GitHub použijte fine-grained token jen pro repozitáře, na kterých mají agenti pracovat, s expirací a bez práv k tomuto repozitáři: `gh auth login --with-token --skip-ssh-key` (token vložte, nezadávejte ho do proměnných). Výchozí `gh auth login` dává přístup ke všem repozitářům. Všechny používají přihlášení přes odkaz a kód, nic se nezadává do proměnných.
 
 Bez ZimaOS stačí stáhnout `compose.yml` a `seccomp.json` do jedné složky, upravit cesty a spustit `docker compose up -d`.
 
@@ -132,7 +132,7 @@ t3-dev connect          znovu spustí přihlášení k T3 Connect
 t3-dev restart <služba> restartuje dockerd, sshd nebo t3
 ```
 
-Z hostitele: `sudo docker exec -it t3-dev t3-dev shell` (shell se stejnými omezeními jako agenti).
+Z hostitele: `sudo docker exec -it t3-dev t3-dev shell` (shell se stejnými omezeními jako agenti). Stejně bezpečné jsou `docker exec t3-dev t3-dev <příkaz>` a `docker exec -it t3-dev bash` nebo `zsh`, které se do sandboxu přesunou samy. Jiné příkazy spuštěné přes `docker exec` běží mimo sandbox, a proto nespouštějte nic, co čte domovský adresář.
 
 **Nepoužívejte `docker exec -u 0` ani `docker cp` do `t3-dev`.** Kvůli vypnutým maskám `/proc` (nutné pro Docker uvnitř) by root v tomto kontejneru mohl měnit nastavení jádra hostitele. `docker cp` má na Dockeru 27 chybu CVE-2026-42306.
 

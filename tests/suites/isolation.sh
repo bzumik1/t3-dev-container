@@ -64,8 +64,14 @@ dev 'rm -f /tmp/canary-hc-ns'
 docker exec -u dev t3-dev python3 /usr/bin/supervisorctl -c /etc/t3-dev/supervisord.conf status >/dev/null 2>&1 || true
 check "control: the .pth canary records a plain supervisorctl" '[ -s /tmp/canary-hc-ns ]'
 dev 'rm -f /tmp/canary-hc-ns'
-sleep 70
-check_host "control: the healthcheck ran meanwhile" '[ "$(docker inspect -f "{{len .State.Health.Log}}" t3-dev)" -ge 1 ]'
+check_host "the image healthcheck enters the sandbox itself" 'docker inspect -f "{{json .Config.Healthcheck.Test}}" t3-dev | grep -qF "\"/usr/bin/setpriv\",\"--no-new-privs\",\"--\",\"/usr/bin/unshare\",\"--user\",\"--map-current-user\""'
+init_ns=$(docker exec t3-dev readlink /proc/1/ns/user)
+before=$(docker inspect -f '{{json .State.Health.Log}}' t3-dev | jq -r '.[-1].Start')
+dev 'rm -f /tmp/hc-seen; end=$((SECONDS + 90)); while [ $SECONDS -lt $end ]; do for p in $(pgrep -f "[s]upervisorctl -c /etc/t3-dev/supervisord.conf status dockerd t3"); do s=$(awk "/^NoNewPrivs:/ {print \$2}" /proc/$p/status 2>/dev/null) && n=$(readlink /proc/$p/ns/user 2>/dev/null) && [ -n "$s" ] && echo "$s $n" >> /tmp/hc-seen; done; sleep 0.05; done'
+after=$(docker inspect -f '{{json .State.Health.Log}}' t3-dev | jq -r '.[-1].Start')
+check_host "control: a healthcheck ran in the window" "[ '$before' != '$after' ]"
+check "control: the sampler saw the healthcheck's supervisorctl" '[ -s /tmp/hc-seen ]'
+check "the healthcheck's supervisorctl runs with no_new_privs outside the initial user namespace" "! grep -v '^1 user:' /tmp/hc-seen && ! grep -qF '$init_ns' /tmp/hc-seen"
 check "the healthcheck loads no Python code from dev's home (supervisorctl -I)" '[ ! -s /tmp/canary-hc-ns ]'
 dev "rm -f $site/t3hc.pth /tmp/canary-hc-ns"
 
@@ -142,7 +148,7 @@ while todo:
 print("\n".join(bad) or "ok")
 raise SystemExit(1 if bad else 0)
 PY
-check "only tini, supervisord and the rootless Docker parents run without no_new_privs" 'python3 -I /tmp/nnp-audit.py tini supervisord dockerd-rootles rootlesskit slirp4netns'
+check "only tini, supervisord and the rootless Docker parents run without no_new_privs" 'python3 -I /tmp/nnp-audit.py tini supervisord rootlesskit slirp4netns'
 check "control: the audit reaches the Docker tree" 'python3 -I /tmp/nnp-audit.py tini supervisord | grep -q " rootlesskit$"'
 
 section "Every t3-dev entry point and interactive shell runs in the agents' sandbox (R6 N1, N2)"
@@ -161,6 +167,18 @@ check_host "t3-dev status from the host ran dev's PATH only inside the sandbox" 
 dev 'rm -f ~/.local/bin/gh /tmp/canary-helper'
 check_host "interactive bash and zsh from docker exec enter the sandbox" 'i=$(docker exec t3-dev readlink /proc/1/ns/user); for sh in bash zsh; do o=$(docker exec -i t3-dev $sh -i -c "awk \"/^NoNewPrivs/ {print \\\$2}\" /proc/self/status; readlink /proc/self/ns/user" </dev/null 2>/dev/null | tail -2 | tr "\n" " "); echo "$sh: $o"; case "$o" in "1 "*) [ "${o#1 }" != "$i " ] || exit 1;; *) exit 1;; esac; done'
 check_host "control: non-interactive bash -c stays where the tests need it" '[ "$(docker exec t3-dev bash -c "readlink /proc/self/ns/user")" = "$(docker exec t3-dev readlink /proc/1/ns/user)" ]'
+put_file /tmp/rc-canary.sh <<'SH'
+echo "$(/usr/bin/awk '/^NoNewPrivs:/ {print $2}' /proc/self/status) $(/usr/bin/readlink /proc/self/ns/user)" >> /tmp/canary-rc
+SH
+dev 'for f in ~/.bashrc ~/.zshrc ~/.zshenv ~/.profile; do echo ". /tmp/rc-canary.sh # canary" >> $f; done; rm -f /tmp/canary-rc'
+printf 'exit\n' | docker exec -i t3-dev bash -i >/dev/null 2>&1 || true
+printf 'exit\n' | docker exec -i t3-dev zsh -i >/dev/null 2>&1 || true
+docker exec t3-dev zsh -c true >/dev/null 2>&1 || true
+docker exec t3-dev bash -lc true >/dev/null 2>&1 || true
+check_host "plain interactive shells, zsh -c and bash -lc read dev's rc files only inside the sandbox" "docker exec t3-dev sh -c '[ \$(grep -c . /tmp/canary-rc) -ge 4 ] && ! grep -q \"^0 \" /tmp/canary-rc && ! grep -qF \"$init_ns\" /tmp/canary-rc'"
+dev 'sh /tmp/rc-canary.sh'
+check_host "control: the rc canary records an unsandboxed caller" "docker exec t3-dev grep -qxF '0 $init_ns' /tmp/canary-rc"
+dev 'sed -i "/# canary/d" ~/.bashrc ~/.zshrc ~/.zshenv ~/.profile; rm -f /tmp/canary-rc'
 
 section "Home and runtime settings (H6, R2-R4)"
 check "home and workspace are private (0700)" '[ "$(stat -c %a ~)" = 700 ] && [ "$(stat -c %a /workspace)" = 700 ]'
