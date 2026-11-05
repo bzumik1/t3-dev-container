@@ -154,7 +154,7 @@ SH
 dev 'chmod +x ~/.local/bin/gh; rm -f /tmp/canary-helper'
 init_ns=$(docker exec t3-dev readlink /proc/1/ns/user)
 docker exec -u dev -e PATH="$DEV_PATH" t3-dev gh --version >/dev/null 2>&1 || true
-check_host "control: the planted gh records an unsandboxed caller" "docker exec t3-dev grep -qx '0 $init_ns' /tmp/canary-helper"
+check_host "control: the planted gh records an unsandboxed caller" "docker exec t3-dev grep -qxF '0 $init_ns' /tmp/canary-helper"
 docker exec t3-dev rm -f /tmp/canary-helper
 docker exec t3-dev t3-dev status >/dev/null 2>&1 || true
 check_host "t3-dev status from the host ran dev's PATH only inside the sandbox" "docker exec t3-dev sh -c '[ -s /tmp/canary-helper ] && ! grep -qF \"$init_ns\" /tmp/canary-helper && ! grep -q \"^0 \" /tmp/canary-helper'"
