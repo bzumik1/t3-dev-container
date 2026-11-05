@@ -26,9 +26,13 @@ else
 fi
 check "nested container: internet reachable" 'docker run --rm alpine wget -q -O /dev/null -T 15 https://github.com'
 check "nested container: Docker host blocked" "! docker run --rm alpine wget -q -O /dev/null -T 5 http://$gateway:18999/"
-# slirp4netns turns the local REJECT into a reset for the nested container; on the runner
-# 192.168.1.1 does not exist, so without the firewall this would time out instead.
-check "nested container: home LAN rejected by the firewall (not a timeout)" "docker run --rm python:3-alpine python -I -c \"import errno,socket,sys; s=socket.socket(); s.settimeout(5); e=s.connect_ex((sys.argv[1],int(sys.argv[2]))); print(e); sys.exit(0 if e in (errno.EHOSTUNREACH,errno.EPERM,errno.EACCES,errno.ECONNREFUSED) else 1)\" 192.168.1.1 80"
+# slirp4netns hides the local REJECT from the nested container (it just times out),
+# so read the packet counter of the 192.168.0.0/16 rule in the shared namespace.
+lan_rejects() { docker exec t3-dev-net iptables-nft -L OUTPUT -n -v -x | awk '$9 == "192.168.0.0/16" && $3 == "REJECT" {print $1}'; }
+before=$(lan_rejects)
+dev 'docker run --rm alpine wget -q -O /dev/null -T 5 http://192.168.1.1/' || true
+after=$(lan_rejects)
+check_host "nested container: home LAN rejected by the firewall rule (counter $before -> $after)" "[ -n '$before' ] && [ -n '$after' ] && [ '$after' -gt '$before' ]"
 check "control: a host-network nested container reaches the internet" 'docker run --rm --network host alpine wget -q -O /dev/null -T 15 https://github.com'
 check "nested host-network container: Docker host blocked" "! docker run --rm --network host alpine wget -q -O /dev/null -T 5 http://$gateway:18999/"
 
