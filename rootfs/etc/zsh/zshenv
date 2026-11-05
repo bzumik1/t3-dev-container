@@ -3,13 +3,19 @@ if [[ $EUID -eq 0 ]]; then
   unsetopt RCS GLOBAL_RCS
   return 0
 fi
-# dev outside the agents' sandbox (e.g. docker exec -it t3-dev zsh): move into it
-# before ~/.zshrc, which an agent may have changed, gets read.
-if [[ -o interactive && $EUID == 1000 ]] && { [[ "$(</proc/self/status)" == *$'NoNewPrivs:\t0'* ]] || [[ "$(/usr/bin/readlink /proc/self/ns/user)" == "$(/usr/bin/readlink /proc/1/ns/user 2>/dev/null)" ]]; }; then
+# dev outside the agents' sandbox (e.g. docker exec -it t3-dev zsh, or zsh -c):
+# move into it before ~/.zshenv or ~/.zshrc, which an agent may have changed,
+# get read.
+if [[ $EUID == 1000 ]] && { [[ "$(</proc/self/status)" == *$'NoNewPrivs:\t0'* ]] || [[ "$(/usr/bin/readlink /proc/self/ns/user)" == "$(/usr/bin/readlink /proc/1/ns/user 2>/dev/null)" ]]; }; then
+  t3_dev_args=()
+  [[ -o interactive ]] && t3_dev_args+=(-i)
+  [[ -o login ]] && t3_dev_args+=(-l)
   if [[ -n $ZSH_EXECUTION_STRING ]]; then
-    exec /usr/bin/setpriv --no-new-privs -- /usr/bin/unshare --user --map-current-user -- /usr/bin/zsh -i -c "$ZSH_EXECUTION_STRING"
+    exec /usr/bin/setpriv --no-new-privs -- /usr/bin/unshare --user --map-current-user -- /usr/bin/zsh "${t3_dev_args[@]}" -c "$ZSH_EXECUTION_STRING"
   fi
-  exec /usr/bin/setpriv --no-new-privs -- /usr/bin/unshare --user --map-current-user -- /usr/bin/zsh -i
+  exec /usr/bin/setpriv --no-new-privs -- /usr/bin/unshare --user --map-current-user -- /usr/bin/zsh "${t3_dev_args[@]}"
+  print -u2 "t3-dev: could not enter the sandbox, refusing to continue"
+  exit 1
 fi
 export LANG=C.UTF-8
 export LC_ALL=C.UTF-8

@@ -41,7 +41,7 @@ RUN apt-get update \
       zsh zsh-autosuggestions zsh-syntax-highlighting bash-completion man-db \
  && ln -s /usr/bin/fdfind /usr/local/bin/fd \
  && NPM_CONFIG_MIN_RELEASE_AGE=3 NPM_CONFIG_IGNORE_SCRIPTS=true npm install -g --prefix /usr "npm@${NPM_VERSION}" "pnpm@${PNPM_VERSION}" \
- && NPM_CONFIG_MIN_RELEASE_AGE=3 NPM_CONFIG_IGNORE_SCRIPTS=true npx -y "playwright@${PLAYWRIGHT_VERSION}" install-deps chromium \
+ && NPM_CONFIG_MIN_RELEASE_AGE=3 NPM_CONFIG_IGNORE_SCRIPTS=true npx -y "playwright@${PLAYWRIGHT_VERSION}" install-deps chromium webkit \
  && cd /tmp \
  && curl -fsSLO "https://github.com/starship/starship/releases/download/v${STARSHIP_VERSION}/starship-x86_64-unknown-linux-musl.tar.gz" \
  && echo "${STARSHIP_SHA256}  starship-x86_64-unknown-linux-musl.tar.gz" | sha256sum -c - \
