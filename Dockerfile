@@ -91,6 +91,6 @@ EXPOSE 2222
 STOPSIGNAL SIGTERM
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
-  CMD ["/usr/bin/setpriv", "--no-new-privs", "--", "/usr/local/bin/t3-dev", "health"]
+  CMD ["/usr/bin/setpriv", "--no-new-privs", "--", "/usr/bin/unshare", "--user", "--map-current-user", "--", "/usr/local/bin/t3-dev", "health"]
 
 ENTRYPOINT ["/usr/local/bin/t3-dev-entrypoint"]

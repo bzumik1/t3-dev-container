@@ -1,7 +1,7 @@
 #!/bin/bash
 # Helper for the t3-dev container: agents, status and health. Runs only as dev.
 if [ "$(/usr/bin/id -u)" != 1000 ]; then
-  printf "t3-dev běží jen jako uživatel dev: docker exec t3-dev setpriv --no-new-privs t3-dev %s\n" "$*" >&2
+  printf "t3-dev běží jen jako uživatel dev: docker exec -it t3-dev t3-dev shell\n" >&2
   exit 1
 fi
 export PATH="/home/dev/.local/bin:/home/dev/.opencode/bin:/home/dev/.local/share/mise/shims:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
@@ -11,7 +11,7 @@ log() { printf '[t3-dev] %s\n' "$*"; }
 
 as_dev() {
   if [ "$(/usr/bin/id -u)" != 1000 ]; then
-    echo "t3-dev běží jen jako uživatel dev: docker exec t3-dev setpriv --no-new-privs t3-dev $*" >&2
+    echo "t3-dev běží jen jako uživatel dev: docker exec -it t3-dev t3-dev shell" >&2
     exit 1
   fi
 }
@@ -60,13 +60,14 @@ status() {
 health() {
   PATH=/usr/sbin:/usr/bin:/sbin:/bin
   [ "$(/usr/bin/supervisorctl -c /etc/t3-dev/supervisord.conf status dockerd t3 2>/dev/null | /usr/bin/grep -c RUNNING)" = 2 ] || exit 1
-  /usr/bin/docker info >/dev/null 2>&1 || exit 1
+  /usr/bin/curl -fsS --max-time 5 --unix-socket /run/user/1000/docker.sock http://localhost/_ping >/dev/null 2>&1 || exit 1
 }
 
 usage() {
   cat <<'EOF'
 Použití: t3-dev <příkaz>
 
+  shell            bezpečný shell (no_new_privs, vlastní uživatelský jmenný prostor)
   status           stav služeb, verze nástrojů a T3 Connect
   install-agents   nainstaluje chybějící T3, Codex, Claude Code a OpenCode
   update-agents    aktualizuje T3, Codex, Claude Code a OpenCode
@@ -77,6 +78,7 @@ EOF
 }
 
 case "${1:-help}" in
+  shell) exec /usr/bin/setpriv --no-new-privs -- /usr/bin/unshare --user --map-current-user -- /usr/bin/zsh -l ;;
   install-agents) as_dev "$@"; install_agents ;;
   update-agents) as_dev "$@"; update_agents ;;
   status) as_dev "$@"; status ;;

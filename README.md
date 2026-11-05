@@ -25,7 +25,7 @@ Postavené pro ZimaOS, ale funguje na libovolném Linuxu s Dockerem.
 
 2. **Nainstalujte aplikaci:** v ZimaOS App Store → **Custom Install** → import, vložte obsah [`compose.yml`](compose.yml). U služby `t3-dev` vyplňte `SERVER_NAME` (např. `HP Prodesk`), u služby `t3-dev-net` `GITHUB_USER`, pokud chcete SSH. Nic jiného měnit nemusíte.
 
-3. **Přihlaste T3 Connect:** otevřete log kontejneru `t3-dev`. Při prvním startu se tam objeví odkaz `https://accounts.t3.codes/device?...` a kód. Otevřete ho a schvalte svým účtem. Server se pak objeví v T3 na všech vašich zařízeních.
+3. **Přihlaste T3 Connect:** otevřete log kontejneru `t3-dev`. Při prvním startu se tam objeví odkaz `https://accounts.t3.codes/device?...` a kód. Otevřete ho a schvalte svým účtem. Schvalujte jen odkaz na `accounts.t3.codes` a jen hned po prvním startu, kdy ho čekáte: do logu může psát i kód uvnitř kontejneru. Server se pak objeví v T3 na všech vašich zařízeních.
 
 4. **Přihlaste agenty a GitHub:** v T3 otevřete nové vlákno na tomto serveru a přihlaste Codex (`codex login`), Claude (`claude auth login`), OpenCode (`opencode auth login`) a GitHub (`gh auth login`). Všechny používají přihlášení přes odkaz a kód, nic se nezadává do proměnných.
 
@@ -76,7 +76,7 @@ Tajné údaje (tokeny, API klíče) do proměnných nepatří: ZimaOS je ukazuje
 ssh -p 2222 dev@<adresa-zimaos>
 ```
 
-Přihlásit se lze jen klíčem z `github.com/<GITHUB_USER>.keys` nebo z `SSH_AUTHORIZED_KEYS`. Klíče načítá `t3-dev-net` při každém startu do souboru, který `t3-dev` vidí jen pro čtení, takže si žádný proces v kontejneru nemůže přidat vlastní klíč. Klíč smazaný na GitHubu nebo odebraný z `SSH_AUTHORIZED_KEYS` přestane platit po restartu `t3-dev-net`. Uložené klíče se použijí jen při výpadku GitHubu, jen pro stejného uživatele a nejdéle 7 dní. Port 2222 se otevře, jen když existuje aspoň jeden klíč. 
+Přihlásit se lze jen klíčem z `github.com/<GITHUB_USER>.keys` nebo z `SSH_AUTHORIZED_KEYS`. Kořenem důvěry je váš účet GitHub: kdo má jeho veřejné klíče pod kontrolou (nebo token s `admin:public_key`), dostane SSH. Když účet přejmenujete, `GITHUB_USER` upravte, jinak by klíče mohl dodat nový majitel starého jména. Klíče načítá `t3-dev-net` při každém startu do souboru, který `t3-dev` vidí jen pro čtení, takže si žádný proces v kontejneru nemůže přidat vlastní klíč. Klíč smazaný na GitHubu nebo odebraný z `SSH_AUTHORIZED_KEYS` přestane platit po restartu `t3-dev-net`. Uložené klíče se použijí jen při výpadku GitHubu, jen pro stejného uživatele a nejdéle 7 dní. Port 2222 se otevře, jen když existuje aspoň jeden klíč. 
 
 Doporučené nastavení klienta (`~/.ssh/config`), s klíčem jen pro tento server:
 
@@ -98,7 +98,7 @@ Server se nikdy neptá na heslo. sshd běží jako `dev`, takže kompromitovaný
 
 Kontejner **není privilegovaný**, nemá přístup k Dockeru hostitele a **za běhu v něm není žádný root**:
 
-- **Bez roota.** `t3-dev` běží celý jako `dev`. Výchozí uživatel image je `dev`, takže i `docker exec` a healthcheck jdou bez roota. Před startem služeb kontejner ověří vlastní sandbox (oprávnění, seccomp, IPv6, firewall) a když něco chybí, nespustí se. V image není `sudo` ani žádný setuid program. `newuidmap`/`newgidmap` mají jen úzké souborové oprávnění (`cap_setuid`, `cap_setgid`) a SSH, T3 ani agenti je díky `no_new_privs` použít nemůžou. Smí je jen Docker démon a supervisord, které se spouštějí jen ze systémových cest a bez Python modulů z domovského adresáře.
+- **Bez roota.** `t3-dev` běží celý jako `dev`. Výchozí uživatel image je `dev`, takže i příkazy spuštěné přes Docker a healthcheck jdou bez roota. Před startem služeb kontejner ověří vlastní sandbox (oprávnění, seccomp, IPv6, firewall, limity) a když něco chybí, nespustí se. V image není `sudo` ani žádný setuid program. `newuidmap`/`newgidmap` mají jen úzké souborové oprávnění (`cap_setuid`, `cap_setgid`) a SSH, T3, agenti ani údržba je použít nemůžou: běží s `no_new_privs` a navíc ve vlastním uživatelském jmenném prostoru, takže nemůžou ani přes `ptrace` převzít procesy, které `no_new_privs` nemají. Ty jsou jen dva druhy: Docker démon a supervisord. Spouštějí se jen ze systémových cest a bez Python modulů z domovského adresáře.
 - **Rootless Docker.** Démon běží jako `dev` ve vlastním uživatelském jmenném prostoru. Root ve vnořeném kontejneru je navenek `dev`. Kontejnery s `--network host` nevidí loopback `t3-dev` (T3 server).
 - **Vlastní seccomp profil** ([`seccomp.json`](seccomp.json), generuje ho [`scripts/generate-seccomp.mjs`](scripts/generate-seccomp.mjs)): výchozí profil Dockeru plus jen volání pro jmenné prostory a mount. Pořád blokuje `bpf`, `perf_event_open`, moduly jádra, `kexec`, `userfaultfd`, `io_uring` a klíčenku.
 - **Firewall** (`t3-dev-net`): internet je volný. Domácí síť, Docker hostitel, ostatní kontejnery a Tailscale (`10/8`, `172.16/12`, `192.168/16`, `100.64/10`, link-local) jsou blokované, a to i pro vnořené kontejnery. Blokovaná jsou i spojení otevřená ještě před nahráním pravidel. Dovnitř vede jen SSH, a to jen když je zapnuté. IPv6 je vypnuté. `dev` pravidla změnit nemůže. DNS jde přes veřejné resolvery (Quad9), ne přes domácí síť.
@@ -132,7 +132,7 @@ t3-dev connect          znovu spustí přihlášení k T3 Connect
 t3-dev restart <služba> restartuje dockerd, sshd nebo t3
 ```
 
-Z hostitele: `sudo docker exec -it t3-dev setpriv --no-new-privs zsh -l`.
+Z hostitele: `sudo docker exec -it t3-dev t3-dev shell` (shell se stejnými omezeními jako agenti).
 
 **Nepoužívejte `docker exec -u 0` ani `docker cp` do `t3-dev`.** Kvůli vypnutým maskám `/proc` (nutné pro Docker uvnitř) by root v tomto kontejneru mohl měnit nastavení jádra hostitele. `docker cp` má na Dockeru 27 chybu CVE-2026-42306.
 

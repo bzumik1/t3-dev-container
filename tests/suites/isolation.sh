@@ -76,6 +76,55 @@ check "supervisord runs isolated (python3 -I)" 'tr "\0" " " < /proc/$(pgrep -x s
 check "nothing without no_new_privs loaded it after a restart (supervisord, entrypoint)" '! cat /tmp/canary-pth-* 2>/dev/null | grep .'
 dev 'd=$(python3 -c "import site; print(site.getusersitepackages())"); rm -f "$d/t3canary.pth" "$d/usercustomize.py" /tmp/canary-pth-*'
 
+section "Services are kept away from processes without no_new_privs (M1)"
+check "sshd, t3 and maintenance run in their own user namespace" 'init=$(readlink /proc/1/ns/user); for svc in sshd t3 maintenance; do p=$(supervisorctl -c /etc/t3-dev/supervisord.conf pid $svc); [ -n "$p" ] && [ "$p" != 0 ] && [ "$(readlink /proc/$p/ns/user)" != "$init" ] || { echo "$svc ($p) shares the user namespace of PID 1"; exit 1; }; done'
+put_file /tmp/ptrace.py <<'PY'
+import ctypes, os, sys
+libc = ctypes.CDLL(None, use_errno=True)
+pid = int(sys.argv[1])
+r = libc.ptrace(16, pid, 0, 0)
+err = ctypes.get_errno()
+if r == 0:
+    os.waitpid(pid, 0)
+    libc.ptrace(17, pid, 0, 0)
+print(r, os.strerror(err))
+sys.exit(0 if r == 0 else 1)
+PY
+supervisord_pid=$(dev "pgrep -x supervisord")
+check_host "control: with Yama off, a no_new_privs process can ptrace supervisord" "docker exec t3-dev setpriv --no-new-privs python3 -I /tmp/ptrace.py $supervisord_pid"
+check_host "from the services' user namespace it cannot" "! docker exec t3-dev setpriv --no-new-privs unshare --user --map-current-user python3 -I /tmp/ptrace.py $supervisord_pid"
+check_host "the healthcheck runs in its own user namespace too" 'docker inspect -f "{{json .Config.Healthcheck.Test}}" t3-dev | grep -q "map-current-user"'
+put_file /tmp/nnp-audit.py <<'PY'
+import os
+allowed = {"tini", "supervisord", "dockerd-rootles", "rootlesskit", "exe", "dockerd", "containerd", "slirp4netns",
+           "containerd-shim", "containerd-shim-runc-v2"[:15], "docker-proxy", "runc", "sleep", "unshare", "setpriv"}
+children = {}
+for p in os.listdir("/proc"):
+    if p.isdigit():
+        try:
+            ppid = int(open(f"/proc/{p}/stat").read().rsplit(")", 1)[1].split()[1])
+        except OSError:
+            continue
+        children.setdefault(ppid, []).append(int(p))
+init_ns = os.readlink("/proc/1/ns/user")
+bad, todo = [], [1]
+while todo:
+    pid = todo.pop()
+    todo += children.get(pid, [])
+    try:
+        if os.readlink(f"/proc/{pid}/ns/user") != init_ns:
+            continue
+        status = open(f"/proc/{pid}/status").read()
+        comm = open(f"/proc/{pid}/comm").read().strip()
+    except OSError:
+        continue
+    if "NoNewPrivs:\t0" in status and comm not in allowed:
+        bad.append(f"{pid} {comm}")
+print("\n".join(bad) or "ok")
+raise SystemExit(1 if bad else 0)
+PY
+check "only the Docker daemon tree, supervisord and tini run without no_new_privs" 'python3 -I /tmp/nnp-audit.py'
+
 section "Home and runtime settings (H6, R2-R4)"
 check "home and workspace are private (0700)" '[ "$(stat -c %a ~)" = 700 ] && [ "$(stat -c %a /workspace)" = 700 ]'
 check_host "log driver, OOM priority and CPU shares of t3-dev" 'v=$(docker inspect -f "{{.HostConfig.LogConfig.Type}} {{index .HostConfig.LogConfig.Config \"max-size\"}} {{.HostConfig.OomScoreAdj}} {{.HostConfig.CPUShares}}" t3-dev); echo "$v"; [ "$v" = "local 10m 800 256" ]'

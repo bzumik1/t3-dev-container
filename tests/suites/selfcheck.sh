@@ -79,6 +79,14 @@ write_compose "$image"
 mutate '/^    mem_limit: 8g$/d; /^    memswap_limit: 8g$/d'
 docker compose -f "$compose" up -d --quiet-pull || true
 refuses "memory limit dropped" "mem_limit"
+write_compose "$image"
+mutate '/^    memswap_limit: 8g$/d'
+docker compose -f "$compose" up -d --quiet-pull || true
+refuses "swap allowed (memswap_limit dropped)" "memswap_limit"
+write_compose "$image"
+mutate '/^    oom_score_adj: 800$/d'
+docker compose -f "$compose" up -d --quiet-pull || true
+refuses "OOM priority dropped" "oom_score_adj"
 
 write_compose "$image"
 mutate '/:\/var\/lib\/t3-dev\/docker$/d'

@@ -11,7 +11,10 @@ PasswordAuthentication no
 KbdInteractiveAuthentication no
 PermitEmptyPasswords no
 UsePAM no
-StrictModes yes
+# sshd runs in its own user namespace (no ptrace to processes without
+# no_new_privs), where the root-owned keys file shows up as nobody. The keys
+# file is root-owned and mounted read-only, so ownership checks add nothing.
+StrictModes no
 MaxAuthTries 3
 LoginGraceTime 30
 
