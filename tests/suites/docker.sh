@@ -38,7 +38,7 @@ gateway=$(dev "ip route | awk '/default/ {print \$3}'")
 python3 -m http.server 18999 --bind 0.0.0.0 >/dev/null 2>&1 &
 host_server=$!
 sleep 2
-check "control: a privileged nested container starts" 'docker run --rm --privileged alpine true'
+check "privileged nested containers are refused (rootless cannot grant them)" '! docker run --rm --privileged alpine true 2>/dev/null'
 check "privileged nested container cannot write host kernel settings" '! docker run --rm --privileged alpine sh -c "echo x > /proc/sys/kernel/core_pattern" 2>/dev/null'
 check "privileged nested container cannot reach the Docker host" "! docker run --rm --privileged alpine wget -q -O /dev/null -T 5 http://$gateway:18999/"
 check "nested NET_ADMIN host-network container cannot bypass the firewall" "! docker run --rm --cap-add NET_ADMIN --network host alpine sh -c 'apk add -q iptables >/dev/null 2>&1; iptables -F 2>/dev/null; iptables -P OUTPUT ACCEPT 2>/dev/null; wget -q -O /dev/null -T 5 http://$gateway:18999/'"

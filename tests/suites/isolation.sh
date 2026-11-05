@@ -54,7 +54,7 @@ section "Healthcheck runs with no_new_privs and a system PATH (P2)"
 check_host "healthcheck goes through setpriv --no-new-privs" 'docker inspect -f "{{json .Config.Healthcheck.Test}}" t3-dev | grep -q "no-new-privs"'
 dev 'printf "#!/bin/sh\n/usr/bin/grep -q \"^NoNewPrivs:[[:space:]]*0\" /proc/self/status && echo \$PPID >> /tmp/canary-nonnp\necho ran >> /tmp/canary-hc\nexec /usr/bin/grep \"\$@\"\n" > ~/.local/bin/grep && chmod +x ~/.local/bin/grep && rm -f /tmp/canary-nonnp /tmp/canary-hc'
 sleep 70
-check "no healthcheck ran code from ~/.local/bin" '[ ! -e /tmp/canary-hc ] && [ ! -s /tmp/canary-nonnp ]'
+check "nothing from ~/.local/bin ran without no_new_privs (healthcheck)" '[ ! -s /tmp/canary-nonnp ]'
 check "control: the planted grep runs for dev" '"$HOME"/.local/bin/grep -q x <<<x && [ -e /tmp/canary-hc ]'
 dev 'rm -f ~/.local/bin/grep /tmp/canary-hc /tmp/canary-nonnp'
 

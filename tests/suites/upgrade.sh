@@ -6,7 +6,7 @@ start "$image"
 docker compose -f "$compose" down --volumes --timeout 30 >/dev/null 2>&1 || true
 sudo rm -rf "$work"
 write_compose "$image"
-mutate '/T3_DEV_COMPOSE/d'
+mutate 's/T3_DEV_COMPOSE: "[0-9]*"/T3_DEV_COMPOSE: "1"/'
 docker compose -f "$compose" up -d --quiet-pull || true
 sleep 20
 check_host "t3-dev-net refuses with an outdated compose.yml" 'docker logs t3-dev-net 2>&1 | grep -q "compose.yml je zastaralý"'

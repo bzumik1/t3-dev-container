@@ -5,7 +5,7 @@ section "Languages"
 check "java 25 (Temurin)" 'java -version 2>&1 | grep -q "\"25" && java -version 2>&1 | grep -qi temurin'
 check "javac 25" 'javac -version 2>&1 | grep -q "^javac 25"'
 check "node 24" 'node -v | grep -q "^v24\."'
-check_host "npm is the pinned version" '[ "$(docker exec t3-dev npm -v)" = "$(sed -n "s/^ARG NPM_VERSION=//p" "$root/Dockerfile")" ]'
+check_host "npm is the pinned version" "[ \"\$(docker exec t3-dev npm -v)\" = \"$(sed -n 's/^ARG NPM_VERSION=//p' "$root/Dockerfile")\" ]"
 check "pnpm" 'pnpm -v'
 check "python3 for scripts" 'python3 --version'
 

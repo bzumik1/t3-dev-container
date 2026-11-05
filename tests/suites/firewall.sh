@@ -36,7 +36,7 @@ check "10/8 rejected by the firewall (not a timeout)" 'python3 -I /tmp/rejected.
 check "172.16/12 (other Docker networks) rejected by the firewall (not a timeout)" 'python3 -I /tmp/rejected.py 172.30.0.1 80'
 check "Tailscale 100.64/10 rejected by the firewall (not a timeout)" 'python3 -I /tmp/rejected.py 100.100.100.100 80'
 check "link-local and cloud metadata rejected by the firewall (not a timeout)" 'python3 -I /tmp/rejected.py 169.254.169.254 80'
-check "control: a public address is not rejected" '! python3 -I /tmp/rejected.py 1.1.1.1 80'
+check "control: a public address is not rejected" 'ip=$(getent ahostsv4 github.com | awk "NR==1 {print \$1}"); echo "$ip"; ! python3 -I /tmp/rejected.py "$ip" 443'
 check "Docker host blocked" "! curl -sS -o /dev/null --max-time 5 http://$gateway:18999/"
 check "IPv6 private ranges rejected when IPv6 is present" 'if ip -6 route 2>/dev/null | grep -q default; then ! curl -sS -o /dev/null --max-time 5 "http://[fd00::1]/"; fi'
 check "nested container: internet reachable" 'docker run --rm alpine wget -q -O /dev/null -T 15 https://github.com'

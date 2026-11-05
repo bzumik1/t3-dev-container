@@ -20,7 +20,10 @@ github_file="$shared/authorized_keys.github"
 key_pattern='^(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp(256|384|521)|sk-ssh-ed25519@openssh\.com|sk-ecdsa-sha2-nistp256@openssh\.com) '
 github_user="${GITHUB_USER:-}"
 
-[ -d "$shared" ] && [ -w "$shared" ] || { log "CHYBA: chybí svazek $shared (compose.yml)."; exit 1; }
+if [ ! -d "$shared" ] || [ ! -w "$shared" ]; then
+  log "CHYBA: chybí svazek $shared (compose.yml)."
+  exit 1
+fi
 rm -f "$marker"
 
 case "${FIREWALL:-on}" in
