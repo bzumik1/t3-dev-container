@@ -81,3 +81,4 @@ docker compose -f "$compose" up -d --quiet-pull || true
 wait_for "the server starts right after a successful sign-in" 420 '[ -e /tmp/fake-t3-served ]'
 check "the sign-in ran exactly once and answered the prompt with y" '[ "$(cat /tmp/fake-t3-link)" = "answer=y" ]'
 check_host "no retry message in the log" '! docker logs t3-dev 2>&1 | grep -q "přihlášení se nedokončilo"'
+check "t3-dev connect signs in again and restarts the server" 'rm -f /tmp/fake-t3-served && t3-dev connect >/dev/null 2>&1; for i in $(seq 60); do [ -e /tmp/fake-t3-served ] && break; sleep 2; done; [ -e /tmp/fake-t3-served ] && [ "$(grep -c "^answer=y$" /tmp/fake-t3-link)" = 2 ]'
