@@ -28,7 +28,7 @@ jobs:
         with:
           persist-credentials: false
       - name: ShellCheck
-        run: shellcheck -x -P tests tests/run.sh tests/lib.sh tests/suites/*.sh rootfs/usr/local/libexec/t3-dev/net-lib scripts/lint-docker-exec.sh $(grep -lE "^#!/bin/(ba)?sh" rootfs/usr/local/bin/* rootfs/usr/local/libexec/t3-dev/*)
+        run: shellcheck -x -P tests tests/run.sh tests/lib.sh tests/suites/*.sh rootfs/usr/local/libexec/t3-dev/net-lib scripts/lint-docker-exec.sh scripts/check-agent-files.sh $(grep -lE "^#!/bin/(ba)?sh" rootfs/usr/local/bin/* rootfs/usr/local/libexec/t3-dev/*)
       - name: Hadolint
         run: docker run --rm -i hadolint/hadolint@sha256:fdf19d026b54834f88c62774fdf2a61ff3b586a42632e5070674d41a796bfdf3 hadolint --failure-threshold error - < Dockerfile
       - name: compose.yml is valid
@@ -85,6 +85,24 @@ jobs:
         run: "! grep -q \"nemá žádná užitečná oprávnění\" README.md"
       - name: No floating @latest installs in the Dockerfile
         run: "! grep -nE \"@latest\" Dockerfile"
+      - name: Agent instructions stay in one place for Codex, Claude Code and OpenCode
+        run: |
+          scripts/check-agent-files.sh
+          control() {
+            rm -rf /tmp/agents && cp -a . /tmp/agents && (cd /tmp/agents && eval "$1")
+            if scripts/check-agent-files.sh /tmp/agents; then echo "control: not caught: $1"; exit 1; fi
+          }
+          control 'printf "x\n" > tests/AGENTS.md'
+          control 'mkdir tëst && printf "x\n" > tëst/CLAUDE.md'
+          control 'printf "{}\n" > opencode.json'
+          control 'printf "# Claude\n" > CLAUDE.md'
+          control 'rm .claude/skills && mkdir .claude/skills'
+          control 'sed -i "s/^name: .*/name: other/" .agents/skills/check-change/SKILL.md'
+          control 'sed -i "s/^description: .*/description: >/" .agents/skills/check-change/SKILL.md'
+          control 'sed -i "2a allowed-tools: Bash" .agents/skills/check-change/SKILL.md'
+          control 'rm -r .agents/skills/write-tests'
+          control 'sed -i "/| \`check-change\` |$/d" AGENTS.md'
+          control 'head -c 30000 /dev/zero | tr "\\0" x >> AGENTS.md'
 
   build:
     runs-on: ubuntu-24.04
