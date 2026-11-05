@@ -11,7 +11,7 @@ section "Firewall (gateway $gateway)"
 check_host "control: an ordinary container reaches the host" "docker run --rm --network t3-dev_default curlimages/curl -fsS -o /dev/null --max-time 10 http://$gateway:18999/"
 check "internet over HTTPS" 'curl -fsS -o /dev/null --max-time 15 https://github.com'
 check "DNS resolves" 'getent hosts github.com'
-dev "cat > /tmp/rejected.py" <<'PY'
+put_file /tmp/rejected.py <<'PY'
 import errno, socket, sys
 host, port, proto = sys.argv[1], int(sys.argv[2]), sys.argv[3] if len(sys.argv) > 3 else "tcp"
 if proto == "udp":

@@ -17,6 +17,10 @@ fail() { printf '\033[31m✗ %s\033[0m\n' "$*"; failures=$((failures + 1)); }
 section() { printf '\n== %s\n' "$*"; }
 DEV_PATH=/home/dev/.local/bin:/home/dev/.opencode/bin:/home/dev/.local/share/mise/shims:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 dev() { docker exec -u dev -e PATH="$DEV_PATH" -w /workspace t3-dev bash -c "$*"; }
+# put_file <path>: write stdin to a file inside t3-dev as dev and fail loudly if it ends up empty.
+put_file() {
+  if ! docker exec -i -u dev t3-dev bash -c "cat > $1" || ! dev "[ -s $1 ]"; then fail "could not write $1 into the container"; fi
+}
 
 check() {
   local name="$1"; shift

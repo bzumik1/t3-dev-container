@@ -65,4 +65,5 @@ check_host "t3-dev-net and t3-dev-init have small local logs" 'for c in t3-dev-n
 check "dev cannot lower its OOM priority" '[ "$(cat /proc/1/oom_score_adj)" = 800 ] && ! sh -c "echo 0 > /proc/self/oom_score_adj" 2>/dev/null'
 check "dev cannot change the firewall even as root of its own user namespace" '! unshare -Ur iptables-nft -F OUTPUT 2>/dev/null'
 check_host "the namespace firewall is untouched after that" 'docker exec t3-dev-net iptables-nft -S OUTPUT | grep -q "192.168.0.0/16.*REJECT"'
+check "outgoing ports stay clear of the nested Docker port range" '[ "$(cat /proc/sys/net/ipv4/ip_local_port_range | tr -s "[:space:]" " ")" = "61000 65535" ]'
 check "IPv6 is off and dev cannot turn it on" '[ "$(cat /proc/sys/net/ipv6/conf/all/disable_ipv6)" = 1 ] && ! sh -c "echo 0 > /proc/sys/net/ipv6/conf/all/disable_ipv6" 2>/dev/null'

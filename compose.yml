@@ -59,6 +59,7 @@ services:
     sysctls:
       net.ipv6.conf.all.disable_ipv6: "1"
       net.ipv6.conf.default.disable_ipv6: "1"
+      net.ipv4.ip_local_port_range: "61000 65535"
     healthcheck:
       test: ["CMD", "/usr/bin/test", "-e", "/run/t3-dev-net-ready"]
       interval: 10s
