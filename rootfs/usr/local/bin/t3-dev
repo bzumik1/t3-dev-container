@@ -88,7 +88,7 @@ case "${1:-help}" in
   install-agents) as_dev "$@"; install_agents ;;
   update-agents) as_dev "$@"; update_agents ;;
   status) as_dev "$@"; status ;;
-  connect) as_dev "$@"; yes y | t3 connect link --headless && /usr/bin/python3 -I /usr/bin/supervisorctl -c /etc/t3-dev/supervisord.conf restart t3 ;;
+  connect) as_dev "$@"; printf 'y\n' | t3 connect link --headless && /usr/bin/python3 -I /usr/bin/supervisorctl -c /etc/t3-dev/supervisord.conf restart t3 ;;
   restart) as_dev "$@"; /usr/bin/python3 -I /usr/bin/supervisorctl -c /etc/t3-dev/supervisord.conf restart "${2:?Zadejte službu: dockerd, sshd nebo t3}" ;;
   health) health ;;
   *) usage ;;
