@@ -22,11 +22,11 @@ scripts/check-agent-files.sh
 ShellCheck and Hadolint are not installed in `t3-dev`. Run them in nested Docker:
 
 ```bash
-docker run --rm -v "$PWD:/mnt:ro" -w /mnt koalaman/shellcheck:stable <arguments of the ShellCheck step>
+docker run --rm -v "$PWD:/mnt:ro" -w /mnt koalaman/shellcheck@sha256:bb596a0d169b85ddd81d8b6d3a2ff6d5baf5fca10b97f575ebc647c3dff62b3d <arguments of the ShellCheck step>
 docker run --rm -i hadolint/hadolint@<digest of the Hadolint step> hadolint --failure-threshold error - < Dockerfile
 ```
 
-Copy the ShellCheck arguments and the Hadolint digest from `ci.yml`, not from here, because they change. The ShellCheck image has no shell, so the `$(grep ...)` in its arguments must be expanded by your own shell before `docker run`.
+Copy the ShellCheck arguments and the Hadolint digest from `ci.yml`, not from here, because they change. The ShellCheck image has no shell, so the `$(grep ...)` in its arguments must be expanded by your own shell before `docker run`. The image is ShellCheck 0.11.0, while CI uses the version installed on the runner, so a new warning can still appear in CI.
 
 The other steps of the `lint` job are one-line `grep`, `yq` or `diff` checks. Run the ones your change can affect.
 

@@ -88,8 +88,21 @@ jobs:
       - name: Agent instructions stay in one place for Codex, Claude Code and OpenCode
         run: |
           scripts/check-agent-files.sh
-          cp -a . /tmp/agents && printf 'x\n' > /tmp/agents/tests/AGENTS.md && git -C /tmp/agents add tests/AGENTS.md
-          if scripts/check-agent-files.sh /tmp/agents; then echo "control: a nested AGENTS.md was not caught"; exit 1; fi
+          control() {
+            rm -rf /tmp/agents && cp -a . /tmp/agents && (cd /tmp/agents && eval "$1")
+            if scripts/check-agent-files.sh /tmp/agents; then echo "control: not caught: $1"; exit 1; fi
+          }
+          control 'printf "x\n" > tests/AGENTS.md'
+          control 'mkdir tëst && printf "x\n" > tëst/CLAUDE.md'
+          control 'printf "{}\n" > opencode.json'
+          control 'printf "# Claude\n" > CLAUDE.md'
+          control 'rm .claude/skills && mkdir .claude/skills'
+          control 'sed -i "s/^name: .*/name: other/" .agents/skills/check-change/SKILL.md'
+          control 'sed -i "s/^description: .*/description: >/" .agents/skills/check-change/SKILL.md'
+          control 'sed -i "2a allowed-tools: Bash" .agents/skills/check-change/SKILL.md'
+          control 'rm -r .agents/skills/write-tests'
+          control 'sed -i "/| \`check-change\` |$/d" AGENTS.md'
+          control 'head -c 30000 /dev/zero | tr "\\0" x >> AGENTS.md'
 
   build:
     runs-on: ubuntu-24.04

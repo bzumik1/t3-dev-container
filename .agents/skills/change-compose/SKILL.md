@@ -20,11 +20,11 @@ rg -nF 'mem_limit: 8g' tests
 - `tests/lib.sh`: `cpus: 10` is replaced with the runner's CPU count
 - `tests/suites/selfcheck.sh`: mutations that delete the lines
 - `tests/suites/isolation.sh`: the values expected from `docker inspect`
-- `tests/suites/resources.sh`: a 9G memory hog that must exceed the limit
+- `tests/suites/resources.sh`: memory hogs that must exceed the limit
 - `README.md`: the `Limity` item in `Zabezpečení`
 - `rootfs/etc/t3-dev/agent-environment.md`: what the agents inside are told
 
-The entrypoint (`rootfs/usr/local/bin/t3-dev-entrypoint`) refuses to start without memory and pids limits, with swap allowed, or with `oom_score_adj` under 500.
+The entrypoint (`rootfs/usr/local/bin/t3-dev-entrypoint`) refuses to start without a memory limit, without a pids limit or with one above 8192, with swap allowed, or with `oom_score_adj` under 500. A limit outside these bounds needs the entrypoint changed in the same PR, or the image will not start.
 
 The same host runs a production app. Raising a limit takes resources from it, so that is the owner's decision. Propose it, do not assume it.
 
