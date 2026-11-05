@@ -22,7 +22,7 @@ Postavené pro ZimaOS, ale funguje na libovolném Linuxu s Dockerem.
    sudo curl -fsSL -o /DATA/AppData/t3-dev/seccomp.json https://raw.githubusercontent.com/bzumik1/t3-dev-container/main/seccomp.json
    ```
 
-2. **Nainstalujte aplikaci:** v ZimaOS App Store → **Custom Install** → import, vložte obsah [`compose.yml`](compose.yml). V nastavení služby `t3-dev` vyplňte aspoň `SERVER_NAME` (např. `HP Prodesk`) a `GITHUB_USER`. Nic jiného měnit nemusíte.
+2. **Nainstalujte aplikaci:** v ZimaOS App Store → **Custom Install** → import, vložte obsah [`compose.yml`](compose.yml). U služby `t3-dev` vyplňte `SERVER_NAME` (např. `HP Prodesk`), u služby `t3-dev-net` `GITHUB_USER`, pokud chcete SSH. Nic jiného měnit nemusíte.
 
 3. **Přihlaste T3 Connect:** otevřete log kontejneru `t3-dev`. Při prvním startu se tam objeví odkaz `https://accounts.t3.codes/device?...` a kód. Otevřete ho a schvalte svým účtem. Server se pak objeví v T3 na všech vašich zařízeních.
 
@@ -49,12 +49,14 @@ Všechny proměnné jsou nepovinné.
 | Proměnná | Služba | Výchozí | Význam |
 |---|---|---|---|
 | `SERVER_NAME` | `t3-dev` | `T3 Dev` | Jméno serveru v T3 a T3 Connect |
-| `GITHUB_USER` | `t3-dev` | prázdné | Čí veřejné klíče z GitHubu smí přes SSH. Prázdné = SSH vypnuté |
 | `GIT_NAME`, `GIT_EMAIL` | `t3-dev` | prázdné | Autor commitů |
 | `TZ` | `t3-dev` | `Europe/Prague` | Časové pásmo |
 | `T3_CONNECT` | `t3-dev` | `true` | Přihlášení k T3 Connect při prvním startu |
+| `GITHUB_USER` | `t3-dev-net` | prázdné | Čí veřejné klíče z GitHubu smí přes SSH. Prázdné = SSH vypnuté |
+| `SSH_AUTHORIZED_KEYS` | `t3-dev-net` | prázdné | Další veřejné SSH klíče, jeden na řádek |
 | `FIREWALL` | `t3-dev-net` | `on` | `off` vypne blokování domácí sítě (nedoporučeno) |
-| `FIREWALL_ALLOW` | `t3-dev-net` | prázdné | Výjimky z firewallu, např. `192.168.1.50 10.0.0.0/24` |
+| `FIREWALL_ALLOW` | `t3-dev-net` | prázdné | Výjimky z firewallu, např. `192.168.1.50:8080/tcp 10.0.5.0/24`. Nejvýš rozsah /16. |
+| `FIREWALL_EXPECTED` | `t3-dev` | `on` | Při `FIREWALL=off` nastavte také na `off`, jinak `t3-dev` čeká na firewall a nespustí se. |
 
 Tajné údaje (tokeny, API klíče) do proměnných nepatří: ZimaOS je ukazuje v UI a vidí je `docker inspect`. Přihlášení agentů se ukládá do svazku `home`.
 
@@ -72,18 +74,18 @@ Tajné údaje (tokeny, API klíče) do proměnných nepatří: ZimaOS je ukazuje
 ssh -p 2222 dev@<adresa-zimaos>
 ```
 
-Přihlásit se lze jen klíčem z `github.com/<GITHUB_USER>.keys` (načítá se při každém startu) nebo klíčem přidaným ručně do `~/.ssh/authorized_keys`. Funguje přesměrování portů k vám, třeba `ssh -p 2222 -L 4200:localhost:4200 dev@...` pro dev server Angularu. Opačný směr (`-R`) je vypnutý.
+Přihlásit se lze jen klíčem z `github.com/<GITHUB_USER>.keys` nebo z `SSH_AUTHORIZED_KEYS`. Klíče načítá `t3-dev-net` při každém startu do souboru, který `t3-dev` vidí jen pro čtení, takže si žádný proces v kontejneru nemůže přidat vlastní klíč. Když SSH vypnuté je, firewall na port 2222 nic nepustí. Funguje přesměrování portů z kontejneru k vám, třeba `ssh -p 2222 -L 4200:localhost:4200 dev@...` pro dev server Angularu. Přesměrovat jde jen na `localhost` kontejneru, ne do sítě. Opačný směr (`-R`) je vypnutý.
 
 ## Zabezpečení
 
 Kontejner **není privilegovaný**, nemá přístup k Dockeru hostitele a **za běhu v něm není žádný root**:
 
-- **Bez roota.** `t3-dev` běží celý jako `dev`. Výchozí uživatel image je `dev`, takže i `docker exec` a healthcheck jdou bez roota. Root, který si někdo vynutí přes `docker exec -u 0`, nemá žádná užitečná oprávnění. V image není `sudo` ani žádný setuid program. `newuidmap`/`newgidmap` mají jen úzké souborové oprávnění (`cap_setuid`, `cap_setgid`) a SSH ani T3 je díky `no_new_privs` použít nemůžou. Smí je jen Docker démon.
+- **Bez roota.** `t3-dev` běží celý jako `dev`. Výchozí uživatel image je `dev`, takže i `docker exec` a healthcheck jdou bez roota. Před startem služeb kontejner ověří vlastní sandbox (oprávnění, seccomp, IPv6, firewall) a když něco chybí, nespustí se. V image není `sudo` ani žádný setuid program. `newuidmap`/`newgidmap` mají jen úzké souborové oprávnění (`cap_setuid`, `cap_setgid`) a SSH, T3 ani agenti je díky `no_new_privs` použít nemůžou. Smí je jen Docker démon, který se spouští jen ze systémových cest.
 - **Rootless Docker.** Démon běží jako `dev` ve vlastním uživatelském jmenném prostoru. Root ve vnořeném kontejneru je navenek `dev`. Kontejnery s `--network host` nevidí loopback `t3-dev` (T3 server).
 - **Vlastní seccomp profil** ([`seccomp.json`](seccomp.json), generuje ho [`scripts/generate-seccomp.mjs`](scripts/generate-seccomp.mjs)): výchozí profil Dockeru plus jen volání pro jmenné prostory a mount. Pořád blokuje `bpf`, `perf_event_open`, moduly jádra, `kexec`, `userfaultfd`, `io_uring` a klíčenku.
-- **Firewall** (`t3-dev-net`): internet je volný. Domácí síť, Docker hostitel, ostatní kontejnery a Tailscale (`10/8`, `172.16/12`, `192.168/16`, `100.64/10`, link-local) jsou blokované, a to i pro vnořené kontejnery. Dovnitř vede jen SSH. IPv6 je vypnuté. `dev` pravidla změnit nemůže.
+- **Firewall** (`t3-dev-net`): internet je volný. Domácí síť, Docker hostitel, ostatní kontejnery a Tailscale (`10/8`, `172.16/12`, `192.168/16`, `100.64/10`, link-local) jsou blokované, a to i pro vnořené kontejnery. Blokovaná jsou i spojení otevřená ještě před nahráním pravidel. Dovnitř vede jen SSH, a to jen když je zapnuté. IPv6 je vypnuté. `dev` pravidla změnit nemůže. DNS jde přes veřejné resolvery (Quad9), ne přes domácí síť.
 - **Limity:** 8 GB RAM, 10 CPU s nižší prioritou než ostatní aplikace, 4096 procesů, omezené logy. Při nedostatku paměti na hostiteli jádro obětuje nejdřív `t3-dev`.
-- **Ochrana proti zavirovaným balíčkům:** npm neinstaluje skripty balíčků a bere jen verze starší 3 dnů (nastavené v prostředí, takže to `.npmrc` projektu nevypne), pnpm a uv také. Platí i při sestavení image.
+- **Ochrana proti zavirovaným balíčkům:** npm neinstaluje skripty balíčků a bere jen verze starší 3 dnů pnpm a uv také. Všechno je nastavené v prostředí, takže to konfigurace klonovaného projektu nevypne. Platí i při sestavení image.
 - **T3 Code** poslouchá jen uvnitř kontejneru, ven vede jen tunel T3 Connect.
 
 **Kompromisy, bez kterých Docker uvnitř nejde:** `t3-dev` má vypnutý profil AppArmor a maskování `/proc` (`apparmor=unconfined`, `systempaths=unconfined`) a smí vytvářet uživatelské jmenné prostory. Chyba jádra v těchto oblastech by mohla vést k úniku na hostitele, proto udržujte ZimaOS aktualizovaný. ZimaOS 1.8.0 má jádro 6.18.9 se známými chybami ([IceWhaleTech/ZimaOS#641](https://github.com/IceWhaleTech/ZimaOS/issues/641)). Silnější izolaci dá jen virtuální stroj.
@@ -111,6 +113,8 @@ t3-dev restart <služba> restartuje dockerd, sshd nebo t3
 ```
 
 Z hostitele: `sudo docker exec -it t3-dev zsh`.
+
+**Nepoužívejte `docker exec -u 0` ani `docker cp` do `t3-dev`.** Kvůli vypnutým maskám `/proc` (nutné pro Docker uvnitř) by root v tomto kontejneru mohl měnit nastavení jádra hostitele. `docker cp` má na Dockeru 27 chybu CVE-2026-42306.
 
 ## Řešení problémů
 

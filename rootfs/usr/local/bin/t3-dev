@@ -1,5 +1,9 @@
 #!/bin/bash
-# Helper for the t3-dev container: agents, status and health.
+# Helper for the t3-dev container: agents, status and health. Runs only as dev.
+if [ "$(/usr/bin/id -u)" != 1000 ]; then
+  printf "t3-dev běží jen jako uživatel dev: docker exec t3-dev t3-dev %s\n" "$*" >&2
+  exit 1
+fi
 export PATH="/home/dev/.local/bin:/home/dev/.opencode/bin:/home/dev/.local/share/mise/shims:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 set -uo pipefail
 

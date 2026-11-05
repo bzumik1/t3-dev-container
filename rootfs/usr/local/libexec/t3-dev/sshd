@@ -1,34 +1,23 @@
 #!/bin/bash
-# SSH server of the dev user on port 2222, key-only. Keys come from
-# https://github.com/$GITHUB_USER.keys into ~/.ssh/authorized_keys.github on every
-# start; ~/.ssh/authorized_keys stays for keys added by hand.
+# SSH server of the dev user on port 2222, key-only. The accepted keys come
+# from /etc/t3-dev/ssh/authorized_keys, which t3-dev-net writes (from
+# GITHUB_USER and SSH_AUTHORIZED_KEYS) and t3-dev mounts read-only, so no
+# process in t3-dev can add a key.
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 set -euo pipefail
 
 log() { printf '[t3-dev] %s\n' "$*"; }
 
-if [ -z "${GITHUB_USER:-}" ]; then
-  log "SSH je vypnuté: nastavte GITHUB_USER (klíče se stáhnou z github.com/<GITHUB_USER>.keys)."
+keys=/etc/t3-dev/ssh/authorized_keys
+if [ ! -s "$keys" ]; then
+  log "SSH je vypnuté: žádný klíč (nastavte GITHUB_USER u t3-dev-net)."
   exec sleep infinity
 fi
 
-ssh_dir="$HOME/.ssh"
-install -d -m 0700 "$ssh_dir" "$ssh_dir/host-keys"
-host_key="$ssh_dir/host-keys/ssh_host_ed25519_key"
+host_dir="$HOME/.ssh/host-keys"
+install -d -m 0700 "$HOME/.ssh" "$host_dir"
+host_key="$host_dir/ssh_host_ed25519_key"
 [ -f "$host_key" ] || ssh-keygen -q -t ed25519 -N '' -C "t3-dev host key" -f "$host_key"
 
-tmp=$(mktemp)
-if curl -fsSL --max-time 20 "https://github.com/${GITHUB_USER}.keys" -o "$tmp" && grep -q '^ssh-\|^ecdsa-\|^sk-' "$tmp"; then
-  install -m 0600 "$tmp" "$ssh_dir/authorized_keys.github"
-  log "SSH: načteno $(grep -c . "$ssh_dir/authorized_keys.github") klíčů uživatele $GITHUB_USER z GitHubu."
-else
-  log "SSH: klíče z GitHubu se nepodařilo stáhnout, používám dříve uložené."
-fi
-rm -f "$tmp"
-
-if [ ! -s "$ssh_dir/authorized_keys.github" ] && [ ! -s "$ssh_dir/authorized_keys" ]; then
-  log "SSH: žádný klíč k dispozici, server nespouštím (zkusím to znovu za minutu)."
-  sleep 60
-  exit 1
-fi
-
+log "SSH: $(grep -c . "$keys") povolených klíčů."
 exec /usr/sbin/sshd -D -e -f /etc/t3-dev/sshd_config

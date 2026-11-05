@@ -1,21 +1,59 @@
 #!/bin/bash
 # Entry point of t3-dev. Runs as dev (UID 1000) from the very start: no root at
-# run time. The bounding set holds only SETUID/SETGID (compose cap_add), which
-# newuidmap/newgidmap need through their file capabilities for rootless Docker.
+# run time. Before starting anything it verifies its own sandbox and refuses to
+# run when compose options were dropped or the firewall of t3-dev-net is not
+# active yet (e.g. right after a host or Docker daemon restart, where Compose's
+# depends_on does not apply).
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 set -euo pipefail
 
 log() { printf '[t3-dev] %s\n' "$*"; }
+die() { log "CHYBA: $*"; exit 1; }
 
-if [ "$(/usr/bin/id -u)" != 1000 ]; then
-  log "Kontejner t3-dev musí běžet jako uživatel dev (user: \"1000:1000\")."
-  exit 1
+[ "$(id -u)" = 1000 ] || die "kontejner t3-dev musí běžet jako uživatel dev (user: \"1000:1000\")."
+
+status_field() { awk -v f="$1:" '$1 == f {print $2}' /proc/self/status; }
+[ "$(status_field CapBnd)" = 00000000000000c0 ] || die "nečekaná oprávnění (CapBnd $(status_field CapBnd)); compose.yml musí mít cap_drop ALL a cap_add jen SETUID, SETGID."
+[ "$(status_field NoNewPrivs)" = 0 ] || die "no-new-privileges je zapnuté; rootless Docker by nefungoval."
+[ "$(status_field Seccomp)" = 2 ] || die "seccomp filtr chybí."
+python3 - <<'PY' || die "vlastní seccomp profil (seccomp.json) není načtený."
+import ctypes, sys
+libc = ctypes.CDLL(None, use_errno=True)
+r = libc.syscall(250, 0, 0, 0, 0, 0)
+sys.exit(0 if r == -1 and ctypes.get_errno() == 38 else 1)
+PY
+if [ -e /proc/sys/net/ipv6/conf/all/disable_ipv6 ] && [ "$(cat /proc/sys/net/ipv6/conf/all/disable_ipv6)" != 1 ]; then
+  die "IPv6 není vypnuté (sysctls u t3-dev-net)."
 fi
 
 if [ ! -w "$HOME" ] || [ ! -w /workspace ]; then
-  log "CHYBA: svazky nepatří uživateli dev. Spusťte kontejner t3-dev-init (je v compose.yml)."
-  exit 1
+  die "svazky nepatří uživateli dev. Spusťte kontejner t3-dev-init (je v compose.yml)."
 fi
 
+case "${FIREWALL_EXPECTED:-on}" in
+  off|false|0)
+    log "VAROVÁNÍ: nekontroluji firewall (FIREWALL_EXPECTED=off)."
+    ;;
+  *)
+    gateway=$(ip route | awk '/^default/ {print $3; exit}')
+    [ -n "$gateway" ] || die "kontejner nemá síť (t3-dev-net neběží?)."
+    firewall_ok=0
+    for _ in $(seq 120); do
+      if python3 - "$gateway" <<'PY'
+import errno, socket, sys
+s = socket.socket()
+s.settimeout(2)
+e = s.connect_ex((sys.argv[1], 9))
+sys.exit(0 if e in (errno.EHOSTUNREACH, errno.EPERM, errno.EACCES, errno.ENETUNREACH) else 1)
+PY
+      then firewall_ok=1; break; fi
+      sleep 1
+    done
+    [ "$firewall_ok" = 1 ] || die "firewall v síti t3-dev-net není aktivní, služby nespouštím."
+    ;;
+esac
+
+chmod 0700 "$HOME"
 if [ ! -e "$HOME/.zshrc" ]; then
   log "První start: připravuji domovský adresář."
   cp -r --update=none /etc/skel/. "$HOME/"
@@ -29,5 +67,5 @@ printf 'PRETTY_HOSTNAME="%s"\n' "$server_name" > "$HOME/.config/t3-dev/machine-i
 find "$XDG_RUNTIME_DIR" -mindepth 1 -delete 2>/dev/null || true
 chmod 0700 "$XDG_RUNTIME_DIR"
 
-log "Spouštím služby (server: $server_name)."
+log "Sandbox ověřen. Spouštím služby (server: $server_name)."
 exec /usr/bin/tini -g -- /usr/bin/supervisord -n -c /etc/t3-dev/supervisord.conf

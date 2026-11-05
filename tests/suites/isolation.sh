@@ -31,3 +31,29 @@ check_host "no host Docker socket mounted" '! docker inspect -f "{{range .Mounts
 check_host "memory, CPU and pids limits applied" '[ "$(docker inspect -f "{{.HostConfig.Memory}} {{.HostConfig.PidsLimit}}" t3-dev)" = "8589934592 4096" ]'
 check "server name from SERVER_NAME" 'grep -qx "PRETTY_HOSTNAME=\"CI Test\"" /etc/machine-info'
 check "time zone applied" '[ "$(date +%Z)" = CET ] || [ "$(date +%Z)" = CEST ]'
+
+section "Root contexts never run code from dev's home (X2, P1)"
+check_host "image has no PATH or HOME pointing into /home/dev" '! docker image inspect -f "{{json .Config.Env}}" "$(docker inspect -f "{{.Image}}" t3-dev)" | grep -qE "\"(PATH|HOME)=[^\"]*/home/dev"'
+check_host "root exec gets HOME=/root, dev gets /home/dev" '[ "$(docker exec -u 0 t3-dev printenv HOME)" = /root ] && [ "$(docker exec t3-dev printenv HOME)" = /home/dev ]'
+check_host "t3-dev-net has no HOME in the home volume" '! docker inspect -f "{{range .Config.Env}}{{println .}}{{end}}" t3-dev-net | grep -q "^HOME=/home/dev"'
+dev 'mkdir -p ~/.local/bin && for c in cat sed grep git ls id awk printf; do printf "#!/bin/sh\ntouch /tmp/canary-\$(/usr/bin/id -u)-%s\nexec /usr/bin/%s \"\$@\"\n" $c $c > ~/.local/bin/$c; chmod +x ~/.local/bin/$c; done; echo "touch /tmp/canary-\$(/usr/bin/id -u)-bashrc" >> ~/.bashrc'
+docker exec -u 0 t3-dev /usr/local/bin/t3-dev help >/dev/null 2>&1 || true
+docker exec -u 0 t3-dev /usr/local/bin/t3-dev bogus >/dev/null 2>&1 || true
+docker exec -u 0 -i t3-dev bash -i -c true </dev/null >/dev/null 2>&1 || true
+docker exec -u 0 t3-dev git --version >/dev/null 2>&1 || true
+check "no root context ran code from dev's home" '! ls /tmp/canary-0-* 2>/dev/null'
+check "dockerd and supervisord run with a system PATH" 'for p in $(pgrep -x dockerd) $(pgrep -x supervisord); do tr "\0" "\n" < /proc/$p/environ | grep -qx "PATH=/usr/sbin:/usr/bin:/sbin:/bin" || { echo "pid $p"; tr "\0" "\n" < /proc/$p/environ | grep ^PATH; exit 1; }; done'
+check "supervisord does not start dockerd-rootless.sh from ~/.local/bin" '
+  printf "#!/bin/sh\ntouch /tmp/canary-dockerd\nexec /usr/bin/dockerd-rootless.sh \"\$@\"\n" > ~/.local/bin/dockerd-rootless.sh && chmod +x ~/.local/bin/dockerd-rootless.sh &&
+  supervisorctl -c /etc/t3-dev/supervisord.conf restart dockerd >/dev/null;
+  for i in $(seq 60); do docker info >/dev/null 2>&1 && break; sleep 2; done; rm -f ~/.local/bin/dockerd-rootless.sh; [ ! -e /tmp/canary-dockerd ]'
+dev 'for c in cat sed grep git ls id awk printf; do rm -f ~/.local/bin/$c; done; sed -i "/canary/d" ~/.bashrc'
+
+section "Home and runtime settings (H6, R2-R4)"
+check "home is private (0700)" '[ "$(stat -c %a ~)" = 700 ]'
+check_host "log driver, OOM priority and CPU shares of t3-dev" 'v=$(docker inspect -f "{{.HostConfig.LogConfig.Type}} {{index .HostConfig.LogConfig.Config \"max-size\"}} {{.HostConfig.OomScoreAdj}} {{.HostConfig.CPUShares}}" t3-dev); echo "$v"; [ "$v" = "local 10m 800 256" ]'
+check_host "t3-dev-net and t3-dev-init have small local logs" 'for c in t3-dev-net t3-dev-init; do v=$(docker inspect -f "{{.HostConfig.LogConfig.Type}} {{index .HostConfig.LogConfig.Config \"max-size\"}}" $c); [ "$v" = "local 1m" ] || { echo "$c: $v"; exit 1; }; done'
+check "dev cannot lower its OOM priority" '[ "$(cat /proc/1/oom_score_adj)" = 800 ] && ! sh -c "echo 0 > /proc/self/oom_score_adj" 2>/dev/null'
+check "dev cannot change the firewall even as root of its own user namespace" '! unshare -Ur iptables-nft -F OUTPUT 2>/dev/null'
+check_host "the namespace firewall is untouched after that" 'docker exec t3-dev-net iptables-nft -S OUTPUT | grep -q "192.168.0.0/16.*REJECT"'
+check "IPv6 is off and dev cannot turn it on" '[ "$(cat /proc/sys/net/ipv6/conf/all/disable_ipv6)" = 1 ] && ! sh -c "echo 0 > /proc/sys/net/ipv6/conf/all/disable_ipv6" 2>/dev/null'

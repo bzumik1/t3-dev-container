@@ -30,13 +30,17 @@ jobs:
       - name: ShellCheck
         run: shellcheck -x -P tests tests/run.sh tests/lib.sh tests/suites/*.sh rootfs/usr/local/bin/* rootfs/usr/local/libexec/t3-dev/*
       - name: Hadolint
-        run: docker run --rm -i hadolint/hadolint hadolint --failure-threshold error - < Dockerfile
+        run: docker run --rm -i hadolint/hadolint@sha256:fdf19d026b54834f88c62774fdf2a61ff3b586a42632e5070674d41a796bfdf3 hadolint --failure-threshold error - < Dockerfile
       - name: compose.yml is valid
         run: docker compose -f compose.yml config -q
       - name: seccomp.json matches its generator
         run: |
           node scripts/generate-seccomp.mjs > /tmp/seccomp.json
-          diff -u seccomp.json /tmp/seccomp.json || echo "::warning::Docker's default seccomp profile changed upstream; run scripts/generate-seccomp.mjs > seccomp.json"
+          diff -u seccomp.json /tmp/seccomp.json
+      - name: README does not promise a harmless root exec
+        run: "! grep -q \"nemá žádná užitečná oprávnění\" README.md"
+      - name: No floating @latest installs in the Dockerfile
+        run: "! grep -nE \"@latest\" Dockerfile"
 
   build:
     runs-on: ubuntu-24.04
@@ -90,6 +94,8 @@ jobs:
           - resources
           - seccomp
           - docker-27
+          - startup
+          - selfcheck
     name: test (${{ matrix.suite }})
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -174,7 +180,7 @@ jobs:
 
   publish:
     needs: [lint, test, scan]
-    if: github.event_name != 'pull_request'
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:

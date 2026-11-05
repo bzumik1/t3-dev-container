@@ -25,3 +25,19 @@ section "Syscalls rootless Docker needs"
 check "user namespaces work" 'unshare -Ur id -u | grep -qx 0'
 check_host "profile in use is the custom one" 'docker inspect -f "{{range .HostConfig.SecurityOpt}}{{println .}}{{end}}" t3-dev | grep -q "^seccomp="'
 check_host "AppArmor unconfined, no masked or read-only /proc paths, nothing else relaxed" 'v=$(docker inspect -f "{{range .HostConfig.SecurityOpt}}{{println .}}{{end}}" t3-dev | grep -E "^(apparmor|label|no-new-privileges|privileged)" | sort | tr "\n" " "); m=$(docker inspect -f "{{len .HostConfig.MaskedPaths}} {{len .HostConfig.ReadonlyPaths}} {{.HostConfig.Privileged}}" t3-dev); echo "$v / $m"; [ "$v" = "apparmor=unconfined " ] && [ "$m" = "0 0 false" ]'
+
+section "Socket families the profile keeps blocked"
+dev "cat > /tmp/probe-socket.py" <<'PY'
+import errno, socket, sys
+family, kind = int(sys.argv[1]), int(sys.argv[2])
+try:
+    socket.socket(family, kind, 0)
+except OSError as e:
+    print(family, errno.errorcode.get(e.errno, e.errno))
+    sys.exit(0 if e.errno in (errno.EPERM, errno.EAFNOSUPPORT) else 1)
+print(family, "created")
+sys.exit(1)
+PY
+check "AF_ALG blocked" 'python3 /tmp/probe-socket.py 38 5'
+check "AF_VSOCK blocked" 'python3 /tmp/probe-socket.py 40 1'
+check "AF_ALG blocked inside a user namespace" 'unshare -Ur python3 /tmp/probe-socket.py 38 5'

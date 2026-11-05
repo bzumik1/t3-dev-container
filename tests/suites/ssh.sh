@@ -1,30 +1,48 @@
 # shellcheck shell=bash disable=SC2016,SC2154
 key="$RUNNER_TEMP/t3-dev-test-key"
-rm -f "$key" "$key.pub"
+other="$RUNNER_TEMP/t3-dev-other-key"
+rm -f "$key" "$key.pub" "$other" "$other.pub"
 ssh-keygen -q -t ed25519 -N '' -f "$key"
+ssh-keygen -q -t ed25519 -N '' -f "$other"
 ssh_opts=(-p 2222 -i "$key" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -o ConnectTimeout=10)
 
-section "SSH off without GITHUB_USER"
-start "$image" "GITHUB_USER="
-sleep 15
+section "SSH off by default: nothing comes in on 2222"
+start "$image"
+wait_ready
+ip=$(docker inspect -f "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}" t3-dev-net)
 check_host "sshd not listening" '! ssh-keyscan -T 5 -p 2222 127.0.0.1 2>/dev/null | grep -q ssh'
 check_host "log explains SSH is off" 'docker logs t3-dev 2>&1 | grep -q "SSH je vypnuté"'
+dev "nohup python3 -m http.server 2222 --bind 0.0.0.0 >/dev/null 2>&1 &"
+sleep 2
+check_host "a dev process listening on 2222 gets no inbound connections" "! curl -sS -o /dev/null --max-time 5 http://$ip:2222/"
+dev 'pkill -f "http.server 2222"' || true
 
-section "SSH with GITHUB_USER"
-restart_with "$image" "GITHUB_USER=bzumik1"
-wait_for "sshd listens with keys from GitHub" 90 'ssh-keyscan -p 2222 127.0.0.1 2>/dev/null | grep -q ssh-ed25519 && [ -s ~/.ssh/authorized_keys.github ]'
-docker exec -i -u dev t3-dev bash -c "install -d -m700 ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys" < "$key.pub"
-check_host "login with an authorized key" "ssh ${ssh_opts[*]} dev@127.0.0.1 'id -u' | grep -qx 1000"
+section "SSH with GITHUB_USER and SSH_AUTHORIZED_KEYS (set on t3-dev-net)"
+restart_with "$image" "GITHUB_USER=bzumik1" "SSH_AUTHORIZED_KEYS=$(cat "$key.pub")"
+wait_for "sshd listens" 90 'ssh-keyscan -p 2222 127.0.0.1 2>/dev/null | grep -q ssh-ed25519'
+check "keys from GitHub and the extra key are installed read-only" '[ "$(grep -c . /etc/t3-dev/ssh/authorized_keys)" -ge 2 ] && [ "$(stat -c %u /etc/t3-dev/ssh/authorized_keys)" = 0 ] && ! touch /etc/t3-dev/ssh/authorized_keys 2>/dev/null'
+check "sshd reads keys only from the read-only file" '/usr/sbin/sshd -T -f /etc/t3-dev/sshd_config 2>/dev/null | grep -i "^authorizedkeysfile" | grep -qx "authorizedkeysfile /etc/t3-dev/ssh/authorized_keys"'
+check "sshd logs verbosely (key fingerprints)" '/usr/sbin/sshd -T -f /etc/t3-dev/sshd_config 2>/dev/null | grep -qx "loglevel VERBOSE"'
+check_host "login with the configured key" "ssh ${ssh_opts[*]} dev@127.0.0.1 'id -u' | grep -qx 1000"
 check_host "login shell has the full environment" "ssh ${ssh_opts[*]} dev@127.0.0.1 'docker info >/dev/null && java -version && node -v && command -v t3-dev'"
 check_host "SSH sessions run with no_new_privs" "ssh ${ssh_opts[*]} dev@127.0.0.1 'grep -q \"^NoNewPrivs:.*1\" /proc/self/status'"
 check_host "zsh is the login shell" "ssh ${ssh_opts[*]} dev@127.0.0.1 'echo \$SHELL' | grep -q zsh"
+docker exec -i t3-dev bash -c "install -d -m700 ~/.ssh && cat >> ~/.ssh/authorized_keys" < "$other.pub"
+check_host "a key added by a dev process does not work" "! ssh -p 2222 -i $other -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -o ConnectTimeout=10 dev@127.0.0.1 true"
 check_host "password login refused" "! ssh -p 2222 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no dev@127.0.0.1 true"
 check_host "root login refused" "! ssh ${ssh_opts[*]} root@127.0.0.1 true"
-check_host "unknown key refused" "k=\$(mktemp -u) && ssh-keygen -q -t ed25519 -N '' -f \$k && ! ssh -p 2222 -i \$k -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes dev@127.0.0.1 true"
-check_host "local port forwarding works" "ssh ${ssh_opts[*]} -o ExitOnForwardFailure=yes -L 13773:127.0.0.1:2222 dev@127.0.0.1 'sleep 10' & sleep 4; ssh-keyscan -T 5 -p 13773 127.0.0.1 2>&1 | grep ssh-ed25519"
+check_host "local port forwarding to the container works" "ssh ${ssh_opts[*]} -o ExitOnForwardFailure=yes -L 13773:127.0.0.1:2222 dev@127.0.0.1 'sleep 10' & sleep 4; ssh-keyscan -T 5 -p 13773 127.0.0.1 2>&1 | grep ssh-ed25519"
+gateway=$(dev "ip route | awk '/default/ {print \$3}'")
+python3 -m http.server 18999 --bind 0.0.0.0 >/dev/null 2>&1 &
+host_server=$!
+sleep 2
+check_host "local port forwarding into the LAN is refused" "ssh ${ssh_opts[*]} -L 18996:$gateway:18999 dev@127.0.0.1 'sleep 10' & sleep 4; ! curl -fsS -o /dev/null --max-time 4 http://127.0.0.1:18996/"
+kill "$host_server"
 check_host "remote port forwarding refused" "! timeout 15 ssh ${ssh_opts[*]} -o ExitOnForwardFailure=yes -R 2299:127.0.0.1:22 dev@127.0.0.1 true"
-check "host key persists in home" '[ -f ~/.ssh/host-keys/ssh_host_ed25519_key ]'
+
+section "Host key persists"
+check "host key lives in home" '[ -f ~/.ssh/host-keys/ssh_host_ed25519_key ]'
 fingerprint=$(ssh-keyscan -p 2222 127.0.0.1 2>/dev/null | ssh-keygen -lf - | awk '{print $2}' | sort | head -1)
-restart_with "$image" "GITHUB_USER=bzumik1"
+restart_with "$image" "GITHUB_USER=bzumik1" "SSH_AUTHORIZED_KEYS=$(cat "$key.pub")"
 wait_for "sshd back after recreate" 90 'ssh-keyscan -p 2222 127.0.0.1 2>/dev/null | grep -q ssh-ed25519'
 check_host "host key unchanged after recreate" "[ \"\$(ssh-keyscan -p 2222 127.0.0.1 2>/dev/null | ssh-keygen -lf - | awk '{print \$2}' | sort | head -1)\" = '$fingerprint' ]"

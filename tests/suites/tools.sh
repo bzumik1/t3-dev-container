@@ -28,3 +28,8 @@ check "mise installs node 22 next to 24" 'mise exec node@22 -- node -v | grep -q
 check "locale UTF-8" 'locale | grep -q "UTF-8" && python3 -c "print(\"čeština\")" | grep -q čeština'
 check "zsh config loads cleanly" 'zsh -ic "exit" 2>&1 | { ! grep -qi "error\|not found"; }'
 check "agent guidance installed on first start" 'for f in ~/.codex/AGENTS.md ~/.claude/CLAUDE.md ~/.config/opencode/AGENTS.md; do for i in $(seq 60); do [ -s $f ] && break; sleep 2; done; [ -s $f ] || { echo "missing $f"; exit 1; }; done'
+
+section "Projects cannot switch the package protections off (C3)"
+check "a project .npmrc cannot disable the npm protections" 'd=$(mktemp -d) && cd $d && printf "ignore-scripts=false\nmin-release-age=0\n" > .npmrc && [ "$(npm config get ignore-scripts)" = true ] && [ "$(npm config get min-release-age)" = 3 ]'
+check "pnpm-workspace.yaml cannot disable the pnpm cooldown" 'd=$(mktemp -d) && cd $d && printf "minimumReleaseAge: 0\n" > pnpm-workspace.yaml && [ "$(pnpm config get minimumReleaseAge)" = 4320 ]'
+check "uv cooldown set in the environment" '[ "$UV_EXCLUDE_NEWER" = "3 days" ]'

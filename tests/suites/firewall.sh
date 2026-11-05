@@ -35,3 +35,9 @@ section "Firewall rules"
 check_host "IPv4 rules present" 'docker exec t3-dev-net iptables-nft -S OUTPUT | grep -q "192.168.0.0/16.*REJECT"'
 
 kill "$host_server"
+
+section "Rule order and DNS (F1, N3)"
+check_host "the general ESTABLISHED accept comes after every reject" 'r=$(docker exec t3-dev-net iptables-nft -S OUTPUT); echo "$r"; est=$(echo "$r" | grep -n -- "-j ACCEPT" | grep -v -- "--ctdir REPLY" | grep -v -- "-o lo" | head -1 | cut -d: -f1); rej=$(echo "$r" | grep -n -- "-j REJECT" | tail -1 | cut -d: -f1); [ -n "$est" ] && [ -n "$rej" ] && [ "$est" -gt "$rej" ]'
+check_host "only replies are accepted before the blocklist" 'docker exec t3-dev-net iptables-nft -S OUTPUT | grep -q -- "--ctstate RELATED,ESTABLISHED --ctdir REPLY -j ACCEPT"'
+check_host "t3-dev-net uses explicit public DNS" 'v=$(docker inspect -f "{{json .HostConfig.Dns}}" t3-dev-net); echo "$v"; [ "$v" = "[\"9.9.9.9\",\"149.112.112.112\"]" ]'
+check "direct DNS query to the LAN is blocked" '! dig +time=2 +tries=1 @192.168.1.1 github.com >/dev/null 2>&1'

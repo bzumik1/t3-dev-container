@@ -6,6 +6,10 @@ ARG DEBIAN_FRONTEND=noninteractive
 ARG NODE_MAJOR=24
 ARG JAVA_MAJOR=25
 ARG STARSHIP_VERSION=1.27.0
+ARG STARSHIP_SHA256=10c8eb4cb3b761d9bf59ea828444c2dab36c900b7d69a69e08814b286969df89
+ARG NPM_VERSION=12.2.2
+ARG PNPM_VERSION=12.16.1
+ARG PLAYWRIGHT_VERSION=1.64.1
 
 ENV LANG=C.UTF-8 \
     LC_ALL=C.UTF-8 \
@@ -29,18 +33,18 @@ RUN apt-get update \
  && apt-get update \
  && apt-get install -y --no-install-recommends \
       docker-ce docker-ce-cli containerd.io docker-ce-rootless-extras docker-buildx-plugin docker-compose-plugin \
-      uidmap libcap2-bin bubblewrap socat slirp4netns iptables iproute2 \
+      uidmap libcap2-bin bubblewrap socat slirp4netns iptables conntrack iproute2 \
       "temurin-${JAVA_MAJOR}-jdk" nodejs gh mise \
       git git-lfs openssh-server openssh-client supervisor tini tzdata locales \
       build-essential pkg-config jq yq ripgrep fd-find fzf tmux vim less htop \
       wget unzip zip xz-utils rsync file procps psmisc lsof dnsutils iputils-ping netcat-openbsd \
       zsh zsh-autosuggestions zsh-syntax-highlighting bash-completion man-db \
  && ln -s /usr/bin/fdfind /usr/local/bin/fd \
- && NPM_CONFIG_MIN_RELEASE_AGE=3 NPM_CONFIG_IGNORE_SCRIPTS=true npm install -g --prefix /usr npm@latest pnpm@latest \
- && NPM_CONFIG_MIN_RELEASE_AGE=3 npx -y playwright@latest install-deps chromium \
+ && NPM_CONFIG_MIN_RELEASE_AGE=3 NPM_CONFIG_IGNORE_SCRIPTS=true npm install -g --prefix /usr "npm@${NPM_VERSION}" "pnpm@${PNPM_VERSION}" \
+ && NPM_CONFIG_MIN_RELEASE_AGE=3 npx -y "playwright@${PLAYWRIGHT_VERSION}" install-deps chromium \
  && cd /tmp \
  && curl -fsSLO "https://github.com/starship/starship/releases/download/v${STARSHIP_VERSION}/starship-x86_64-unknown-linux-musl.tar.gz" \
- && echo "$(curl -fsSL "https://github.com/starship/starship/releases/download/v${STARSHIP_VERSION}/starship-x86_64-unknown-linux-musl.tar.gz.sha256")  starship-x86_64-unknown-linux-musl.tar.gz" | sha256sum -c - \
+ && echo "${STARSHIP_SHA256}  starship-x86_64-unknown-linux-musl.tar.gz" | sha256sum -c - \
  && tar -xzf starship-x86_64-unknown-linux-musl.tar.gz -C /usr/local/bin starship \
  && cd / \
  && rm -rf /var/lib/apt/lists/* /root/.npm /root/.cache /tmp/*
@@ -51,7 +55,7 @@ RUN userdel -r ubuntu 2>/dev/null || true \
  && usermod -p '*' dev \
  && echo "dev:100000:65536" > /etc/subuid \
  && echo "dev:100000:65536" > /etc/subgid \
- && mkdir -p /workspace /home/dev/.local/share/docker /home/dev/.config/t3-dev \
+ && mkdir -p /workspace /home/dev/.local/share/docker /home/dev/.config/t3-dev /etc/t3-dev/ssh \
  && install -d -m 0700 -o 1000 -g 1000 /run/user/1000 \
  && ln -sf /home/dev/.config/t3-dev/machine-info /etc/machine-info \
  && chown -R dev:dev /workspace /home/dev \
@@ -60,19 +64,19 @@ RUN userdel -r ubuntu 2>/dev/null || true \
  && getcap -r /usr /opt 2>/dev/null | awk "{print \$1}" | xargs -r -n1 setcap -r \
  && setcap cap_setuid=ep /usr/bin/newuidmap \
  && setcap cap_setgid=ep /usr/bin/newgidmap \
+ && sed -i '1i if [ "$(id -u)" = 0 ]; then export HOME=/root PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; fi' /etc/bash.bashrc \
  && rm -f /etc/update-motd.d/* /etc/legal
 
 COPY rootfs/ /
 
-ENV HOME=/home/dev \
-    USER=dev \
-    SHELL=/usr/bin/zsh \
-    XDG_RUNTIME_DIR=/run/user/1000 \
+ENV XDG_RUNTIME_DIR=/run/user/1000 \
     DOCKER_HOST=unix:///run/user/1000/docker.sock \
     TESTCONTAINERS_RYUK_CONTAINER_PRIVILEGED=false \
     TESTCONTAINERS_HOST_OVERRIDE=localhost \
     NPM_CONFIG_IGNORE_SCRIPTS=true \
-    NPM_CONFIG_MIN_RELEASE_AGE=3
+    NPM_CONFIG_MIN_RELEASE_AGE=3 \
+    PNPM_CONFIG_MINIMUM_RELEASE_AGE=4320 \
+    UV_EXCLUDE_NEWER="3 days"
 
 USER 1000:1000
 

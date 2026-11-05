@@ -5,7 +5,13 @@
 // perf_event_open, kernel modules, kexec, userfaultfd, io_uring, ...) stays blocked.
 // Usage: node scripts/generate-seccomp.mjs > seccomp.json
 
-const source = "https://raw.githubusercontent.com/moby/profiles/main/seccomp/default.json";
+import { createHash } from "node:crypto";
+
+// Pinned upstream: moby/profiles at a fixed commit, verified by SHA-256.
+// To update: set both values from https://github.com/moby/profiles and regenerate.
+const commit = "4b8214fc4971e06172938a1f1554ccff6647ee80";
+const sha256 = "6416b47770785a41ac59073cdc77d9fe98517df2799dc83ef207e622de3053f6";
+const source = `https://raw.githubusercontent.com/moby/profiles/${commit}/seccomp/default.json`;
 
 const rootlessDockerSyscalls = [
   "chroot",
@@ -29,7 +35,10 @@ const rootlessDockerSyscalls = [
 
 const response = await fetch(source);
 if (!response.ok) throw new Error(`${source}: ${response.status}`);
-const profile = await response.json();
+const body = Buffer.from(await response.arrayBuffer());
+const digest = createHash("sha256").update(body).digest("hex");
+if (digest !== sha256) throw new Error(`${source}: SHA-256 ${digest}, expected ${sha256}`);
+const profile = JSON.parse(body.toString("utf8"));
 
 const restrictsWithoutSysAdmin = (rule) => rule.excludes?.caps?.includes("CAP_SYS_ADMIN");
 profile.syscalls = profile.syscalls.filter((rule) => !restrictsWithoutSysAdmin(rule));

@@ -33,3 +33,22 @@ EOF
 check "privileged nested container is refused or harmless" 'docker run --rm --privileged alpine true 2>/dev/null; docker run --rm alpine true'
 check "volumes keep data" 'docker volume create t3v && docker run --rm -v t3v:/d alpine sh -c "echo x > /d/f" && docker run --rm -v t3v:/d alpine cat /d/f | grep -qx x && docker volume rm t3v'
 check "docker system df works" 'docker system df'
+
+section "Nested containers stay inside (T6-T8, T13, T16)"
+gateway=$(dev "ip route | awk '/default/ {print \$3}'")
+python3 -m http.server 18999 --bind 0.0.0.0 >/dev/null 2>&1 &
+host_server=$!
+sleep 2
+check "privileged nested container cannot write host kernel settings" '! docker run --rm --privileged alpine sh -c "echo x > /proc/sys/kernel/core_pattern" 2>/dev/null'
+check "privileged nested container cannot reach the Docker host" "! docker run --rm --privileged alpine wget -q -O /dev/null -T 5 http://$gateway:18999/"
+check "nested NET_ADMIN host-network container cannot bypass the firewall" "! docker run --rm --cap-add NET_ADMIN --network host alpine sh -c 'apk add -q iptables >/dev/null 2>&1; iptables -F 2>/dev/null; iptables -P OUTPUT ACCEPT 2>/dev/null; wget -q -O /dev/null -T 5 http://$gateway:18999/'"
+check "seccomp filter is inherited by nested containers" 'docker run --rm alpine grep -q "^Seccomp:\s*2" /proc/self/status'
+check "outer seccomp still applies to an unconfined nested container (keyctl ENOSYS)" 'docker run --rm --security-opt seccomp=unconfined python:3-alpine python -c "import ctypes,sys; l=ctypes.CDLL(None,use_errno=True); r=l.syscall(250,0,0,0,0,0); sys.exit(0 if r==-1 and ctypes.get_errno()==38 else 1)"'
+check "nested daemon publishes ports on 127.0.0.1 only" 'docker run -d --name p1 -p 18084:80 nginx:alpine >/dev/null && sleep 2 && docker port p1 80 | grep -qx "127.0.0.1:18084"; s=$?; docker rm -f p1 >/dev/null; exit $s'
+check "nested daemon uses the local log driver" 'docker info -f "{{.LoggingDriver}}" | grep -qx local'
+ip=$(docker inspect -f "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}" t3-dev-net)
+dev 'docker run -d --name p2 -p 0.0.0.0:18082:80 nginx:alpine >/dev/null; sleep 3'
+check_host "an explicitly 0.0.0.0-published nested port is still unreachable from the host" "! curl -sS -o /dev/null --max-time 5 http://$ip:18082/"
+dev 'docker rm -f p2 >/dev/null'
+check "maintenance pass runs" 'docker run --name stopped alpine true && /usr/local/libexec/t3-dev/maintenance --once && docker system df'
+kill "$host_server"

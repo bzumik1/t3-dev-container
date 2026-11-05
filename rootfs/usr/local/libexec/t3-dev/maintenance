@@ -1,14 +1,25 @@
 #!/bin/bash
 # Daily clean-up of the nested Docker so its data on /DATA cannot grow without
-# bound: unused build cache and dangling images older than a week.
+# bound: stopped containers, unused build cache and dangling images older than
+# a week. "--once" runs a single pass (used by the tests).
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 set -uo pipefail
+
+pass() {
+  docker info >/dev/null 2>&1 || return 0
+  docker container prune -f --filter until=168h >/dev/null 2>&1
+  docker builder prune -f --filter until=168h >/dev/null 2>&1
+  docker image prune -f --filter until=168h >/dev/null 2>&1
+  printf '[t3-dev] Údržba: vnořený Docker zabírá %s.\n' "$(du -sh "$HOME/.local/share/docker" 2>/dev/null | cut -f1)"
+}
+
+if [ "${1:-}" = --once ]; then
+  pass
+  exit 0
+fi
 
 sleep 600
 while true; do
-  if docker info >/dev/null 2>&1; then
-    docker builder prune -f --filter until=168h >/dev/null 2>&1
-    docker image prune -f --filter until=168h >/dev/null 2>&1
-    printf '[t3-dev] Údržba: vnořený Docker zabírá %s.\n' "$(du -sh "$HOME/.local/share/docker" 2>/dev/null | cut -f1)"
-  fi
+  pass
   sleep 86400
 done

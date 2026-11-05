@@ -6,7 +6,7 @@ PidFile /run/user/1000/sshd.pid
 AllowUsers dev
 PermitRootLogin no
 PubkeyAuthentication yes
-AuthorizedKeysFile .ssh/authorized_keys .ssh/authorized_keys.github
+AuthorizedKeysFile /etc/t3-dev/ssh/authorized_keys
 PasswordAuthentication no
 KbdInteractiveAuthentication no
 PermitEmptyPasswords no
@@ -16,6 +16,7 @@ MaxAuthTries 3
 LoginGraceTime 30
 
 AllowTcpForwarding local
+PermitOpen localhost:* 127.0.0.1:*
 AllowAgentForwarding no
 AllowStreamLocalForwarding no
 X11Forwarding no
@@ -26,4 +27,5 @@ PermitUserEnvironment no
 ClientAliveInterval 60
 ClientAliveCountMax 3
 PrintMotd no
+LogLevel VERBOSE
 Subsystem sftp internal-sftp

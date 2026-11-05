@@ -1,18 +1,60 @@
 #!/bin/bash
-# Entry point of t3-dev-net: applies the firewall, marks it ready for the
-# healthcheck, then only holds the network namespace that t3-dev joins.
+# Entry point of t3-dev-net (root, only CAP_NET_ADMIN, read-only): applies the
+# firewall, writes the SSH keys t3-dev may accept into a root-owned volume that
+# t3-dev mounts read-only, marks itself ready, then only holds the network
+# namespace that t3-dev joins.
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 unset BASH_ENV ENV CDPATH
 set -euo pipefail
 
+log() { printf '[t3-dev-net] %s\n' "$*"; }
+
+keys_dir=/etc/t3-dev/ssh
+keys_file="$keys_dir/authorized_keys"
+github_user="${GITHUB_USER:-}"
+manual_keys="${SSH_AUTHORIZED_KEYS:-}"
+
+ssh_enabled=0
+if [ -n "$github_user" ] || [ -n "$manual_keys" ]; then ssh_enabled=1; fi
+export SSH_ENABLED="$ssh_enabled"
+
 case "${FIREWALL:-on}" in
   off|false|0)
-    printf '[t3-dev-net] VAROVÁNÍ: firewall je vypnutý (FIREWALL=off), t3-dev vidí domácí síť i ostatní kontejnery.\n'
+    log "VAROVÁNÍ: firewall je vypnutý (FIREWALL=off), t3-dev vidí domácí síť i ostatní kontejnery."
     ;;
   *)
     /usr/local/libexec/t3-dev/firewall
     ;;
 esac
+
+if [ -d "$keys_dir" ] && [ -w "$keys_dir" ]; then
+  tmp="$keys_dir/.authorized_keys.new"
+  : > "$tmp"
+  if [ -n "$github_user" ]; then
+    if [[ ! "$github_user" =~ ^[A-Za-z0-9-]{1,39}$ ]]; then
+      log "CHYBA: GITHUB_USER '$github_user' není platné jméno účtu GitHub."
+      exit 1
+    fi
+    if curl -fsSL --max-time 20 --proto '=https' "https://github.com/${github_user}.keys" -o "$tmp.github" \
+      && grep -E '^(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp(256|384|521)|sk-ssh-ed25519@openssh.com|sk-ecdsa-sha2-nistp256@openssh.com) ' "$tmp.github" >> "$tmp"; then
+      log "SSH: načteno $(grep -c . "$tmp") klíčů uživatele $github_user z GitHubu."
+    elif [ -s "$keys_file" ]; then
+      log "SSH: klíče z GitHubu se nepodařilo stáhnout, ponechávám dříve uložené."
+      cp "$keys_file" "$tmp"
+    else
+      log "SSH: klíče z GitHubu se nepodařilo stáhnout."
+    fi
+    rm -f "$tmp.github"
+  fi
+  if [ -n "$manual_keys" ]; then
+    printf '%s\n' "$manual_keys" | grep -E '^(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp(256|384|521)|sk-ssh-ed25519@openssh.com|sk-ecdsa-sha2-nistp256@openssh.com) ' >> "$tmp" || true
+  fi
+  chmod 0644 "$tmp"
+  mv -f "$tmp" "$keys_file"
+  if [ "$ssh_enabled" = 0 ]; then
+    log "SSH je vypnuté (nastavte GITHUB_USER u t3-dev-net)."
+  fi
+fi
 
 touch /run/t3-dev-net-ready
 exec sleep infinity
