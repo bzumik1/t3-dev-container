@@ -18,6 +18,12 @@ put_file /tmp/probe.py <<<"$syscall_probe"
 section "Syscalls the profile keeps blocked"
 check "control: the probe reports an allowed syscall as allowed" '! python3 /tmp/probe.py getpid'
 for s in bpf perf_event_open kexec_load init_module finit_module userfaultfd io_uring_setup open_by_handle_at keyctl add_key; do
+  # Control: the same probe as the same uid without seccomp, with the same capabilities.
+  if docker run --rm -i --user 1000:1000 --cap-drop ALL --cap-add SETUID --cap-add SETGID --security-opt seccomp=unconfined --entrypoint python3 "$image" -I - "$s" <<<"$syscall_probe" >/dev/null 2>&1; then
+    skip "$s: the kernel refuses it even without seccomp, the probe cannot tell the profile apart"
+  else
+    pass "control: without seccomp $s is not refused with EPERM/ENOSYS"
+  fi
   check "$s blocked for dev" "python3 /tmp/probe.py $s"
   check "$s blocked inside a user namespace" "unshare -Ur python3 /tmp/probe.py $s"
 done

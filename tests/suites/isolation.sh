@@ -47,23 +47,27 @@ docker exec -u 0 -i t3-dev bash -i -c true </dev/null >/dev/null 2>&1 || true
 docker exec -u 0 t3-dev git --version >/dev/null 2>&1 || true
 docker exec -u 0 -e HOME=/home/dev -e PATH="$DEV_PATH" -i t3-dev bash -i -c true </dev/null >/dev/null 2>&1 || true
 check "no root context ran code from dev's home" '! ls /tmp/canary-0-* 2>/dev/null'
-check "dockerd and supervisord run with a system PATH" 'for p in $(pgrep -x dockerd) $(pgrep -x supervisord); do tr "\0" "\n" < /proc/$p/environ | grep -qx "PATH=/usr/sbin:/usr/bin:/sbin:/bin" || { echo "pid $p"; tr "\0" "\n" < /proc/$p/environ | grep ^PATH; exit 1; }; done'
+check "dockerd and supervisord run with a system PATH" '[ -n "$(pgrep -x supervisord)" ] && [ -n "$(pgrep -x dockerd)" ] && for p in $(pgrep -x dockerd) $(pgrep -x supervisord); do tr "\0" "\n" < /proc/$p/environ | grep -qx "PATH=/usr/sbin:/usr/bin:/sbin:/bin" || { echo "pid $p"; tr "\0" "\n" < /proc/$p/environ | grep ^PATH; exit 1; }; done'
 check "supervisord does not start dockerd-rootless.sh from ~/.local/bin" '
   printf "#!/bin/sh\ntouch /tmp/canary-dockerd\nexec /usr/bin/dockerd-rootless.sh \"\$@\"\n" > ~/.local/bin/dockerd-rootless.sh && chmod +x ~/.local/bin/dockerd-rootless.sh &&
   supervisorctl -c /etc/t3-dev/supervisord.conf restart dockerd >/dev/null;
   for i in $(seq 60); do docker info >/dev/null 2>&1 && break; sleep 2; done; rm -f ~/.local/bin/dockerd-rootless.sh; [ ! -e /tmp/canary-dockerd ]'
 dev 'for c in cat sed grep git ls id awk printf; do rm -f ~/.local/bin/$c; done; sed -i "/canary/d" ~/.bashrc'
 
-section "Healthcheck runs with no_new_privs and a system PATH (P2)"
-check_host "healthcheck goes through setpriv --no-new-privs" 'docker inspect -f "{{json .Config.Healthcheck.Test}}" t3-dev | grep -q "no-new-privs"'
-dev 'printf "#!/bin/sh\n/usr/bin/grep -q \"^NoNewPrivs:[[:space:]]*0\" /proc/self/status && echo \$PPID >> /tmp/canary-nonnp\necho ran >> /tmp/canary-hc\nexec /usr/bin/grep \"\$@\"\n" > ~/.local/bin/grep && chmod +x ~/.local/bin/grep && rm -f /tmp/canary-nonnp /tmp/canary-hc'
+section "Healthcheck runs with no_new_privs in its own user namespace (P2, M1)"
+site=$(dev 'python3 -c "import site; print(site.getusersitepackages())"')
+dev "mkdir -p $site"
+put_file "$site/t3hc.pth" <<'PY'
+import os; c = open("/proc/self/cmdline").read(); ("supervisorctl" in c and "status" in c) and open("/tmp/canary-hc-ns", "a").write(open("/proc/self/status").read().split("NoNewPrivs:\t")[1][0] + " " + os.readlink("/proc/self/ns/user") + "\n")
+PY
+dev 'rm -f /tmp/canary-hc-ns'
+docker exec -u dev t3-dev python3 /usr/bin/supervisorctl -c /etc/t3-dev/supervisord.conf status >/dev/null 2>&1 || true
+check "control: the .pth canary records a plain supervisorctl" '[ -s /tmp/canary-hc-ns ]'
+dev 'rm -f /tmp/canary-hc-ns'
 sleep 70
 check_host "control: the healthcheck ran meanwhile" '[ "$(docker inspect -f "{{len .State.Health.Log}}" t3-dev)" -ge 1 ]'
-check "nothing from ~/.local/bin ran without no_new_privs (healthcheck)" '[ ! -s /tmp/canary-nonnp ]'
-docker exec -u dev -e PATH="$DEV_PATH" t3-dev grep -q x /dev/null || true
-check "control: a plain docker exec (no no_new_privs) trips the canary" '[ -s /tmp/canary-nonnp ]'
-check "control: the planted grep runs for dev" '"$HOME"/.local/bin/grep -q x <<<x && [ -e /tmp/canary-hc ]'
-dev 'rm -f ~/.local/bin/grep /tmp/canary-hc /tmp/canary-nonnp'
+check "the healthcheck loads no Python code from dev's home (supervisorctl -I)" '[ ! -s /tmp/canary-hc-ns ]'
+dev "rm -f $site/t3hc.pth /tmp/canary-hc-ns"
 
 section "No process without no_new_privs loads Python code from dev's home (N1, E2)"
 dev 'd=$(python3 -c "import site; print(site.getusersitepackages())") && mkdir -p "$d" && printf "%s\n" "import os; s=open(\"/proc/self/status\").read(); (\"NoNewPrivs:\\t0\" in s) and open(\"/tmp/canary-pth-%d\" % os.getpid(), \"w\").write(open(\"/proc/self/cmdline\").read().replace(\"\\0\", \" \"))" > "$d/t3canary.pth" && cp "$d/t3canary.pth" "$d/usercustomize.py"'
@@ -79,25 +83,34 @@ dev 'd=$(python3 -c "import site; print(site.getusersitepackages())"); rm -f "$d
 section "Services are kept away from processes without no_new_privs (M1)"
 check "sshd, t3 and maintenance run in their own user namespace" 'init=$(readlink /proc/1/ns/user); for svc in sshd t3 maintenance; do p=$(supervisorctl -c /etc/t3-dev/supervisord.conf pid $svc); [ -n "$p" ] && [ "$p" != 0 ] && [ "$(readlink /proc/$p/ns/user)" != "$init" ] || { echo "$svc ($p) shares the user namespace of PID 1"; exit 1; }; done'
 put_file /tmp/ptrace.py <<'PY'
-import ctypes, os, sys
+import ctypes, errno, os, sys
 libc = ctypes.CDLL(None, use_errno=True)
 pid = int(sys.argv[1])
-r = libc.ptrace(16, pid, 0, 0)
-err = ctypes.get_errno()
-if r == 0:
+if libc.ptrace(16, pid, 0, 0) == 0:
     os.waitpid(pid, 0)
     libc.ptrace(17, pid, 0, 0)
-print(r, os.strerror(err))
-sys.exit(0 if r == 0 else 1)
+    print("attached")
+    sys.exit(0)
+e = ctypes.get_errno()
+try:
+    open(f"/proc/{pid}/mem", "rb").close()
+    print("mem opened")
+    sys.exit(0)
+except PermissionError:
+    pass
+print(os.strerror(e))
+sys.exit(2 if e == errno.EPERM else 1)
 PY
 supervisord_pid=$(dev "pgrep -x supervisord")
-check_host "control: with Yama off, a no_new_privs process can ptrace supervisord" "docker exec t3-dev setpriv --no-new-privs python3 -I /tmp/ptrace.py $supervisord_pid"
-check_host "from the services' user namespace it cannot" "! docker exec t3-dev setpriv --no-new-privs unshare --user --map-current-user python3 -I /tmp/ptrace.py $supervisord_pid"
-check_host "the healthcheck runs in its own user namespace too" 'docker inspect -f "{{json .Config.Healthcheck.Test}}" t3-dev | grep -q "map-current-user"'
+check_host "control: with Yama off, a no_new_privs process in the container namespace can ptrace supervisord" "docker exec t3-dev setpriv --no-new-privs python3 -I /tmp/ptrace.py $supervisord_pid"
+t3_pid=$(dev "supervisorctl -c /etc/t3-dev/supervisord.conf pid t3")
+for target in 1 "$supervisord_pid" $(dev "pgrep -x rootlesskit"); do
+  check_host "from a fresh services sandbox: EPERM for ptrace and /proc/$target/mem" "docker exec t3-dev setpriv --no-new-privs unshare --user --map-current-user python3 -I /tmp/ptrace.py $target; [ \$? = 2 ]"
+  check_host "from the real t3 namespace: EPERM for ptrace and /proc/$target/mem" "docker exec t3-dev setpriv --no-new-privs nsenter --user --target $t3_pid --preserve-credentials python3 -I /tmp/ptrace.py $target; [ \$? = 2 ]"
+done
 put_file /tmp/nnp-audit.py <<'PY'
-import os
-allowed = {"tini", "supervisord", "dockerd-rootles", "rootlesskit", "exe", "dockerd", "containerd", "slirp4netns",
-           "containerd-shim", "containerd-shim-runc-v2"[:15], "docker-proxy", "runc", "sleep", "unshare", "setpriv"}
+import os, sys
+allowed = set(sys.argv[1:])
 children = {}
 for p in os.listdir("/proc"):
     if p.isdigit():
@@ -112,18 +125,42 @@ while todo:
     pid = todo.pop()
     todo += children.get(pid, [])
     try:
-        if os.readlink(f"/proc/{pid}/ns/user") != init_ns:
-            continue
         status = open(f"/proc/{pid}/status").read()
         comm = open(f"/proc/{pid}/comm").read().strip()
     except OSError:
         continue
-    if "NoNewPrivs:\t0" in status and comm not in allowed:
+    if "NoNewPrivs:\t0" not in status:
+        continue
+    try:
+        if os.readlink(f"/proc/{pid}/ns/user") != init_ns:
+            continue
+    except OSError:
+        bad.append(f"{pid} {comm} (namespace unreadable)")
+        continue
+    if comm not in allowed:
         bad.append(f"{pid} {comm}")
 print("\n".join(bad) or "ok")
 raise SystemExit(1 if bad else 0)
 PY
-check "only the Docker daemon tree, supervisord and tini run without no_new_privs" 'python3 -I /tmp/nnp-audit.py'
+check "only tini, supervisord and the rootless Docker parents run without no_new_privs" 'python3 -I /tmp/nnp-audit.py tini supervisord dockerd-rootles rootlesskit slirp4netns'
+check "control: the audit reaches the Docker tree" 'python3 -I /tmp/nnp-audit.py tini supervisord | grep -q " rootlesskit$"'
+
+section "Every t3-dev entry point and interactive shell runs in the agents' sandbox (R6 N1, N2)"
+put_file /home/dev/.local/bin/gh <<'SH'
+#!/bin/sh
+echo "$(/usr/bin/awk '/^NoNewPrivs:/ {print $2}' /proc/self/status) $(/usr/bin/readlink /proc/self/ns/user)" >> /tmp/canary-helper
+exec /usr/bin/gh "$@"
+SH
+dev 'chmod +x ~/.local/bin/gh; rm -f /tmp/canary-helper'
+init_ns=$(docker exec t3-dev readlink /proc/1/ns/user)
+docker exec -u dev -e PATH="$DEV_PATH" t3-dev gh --version >/dev/null 2>&1 || true
+check_host "control: the planted gh records an unsandboxed caller" "docker exec t3-dev grep -qxF '0 $init_ns' /tmp/canary-helper"
+docker exec t3-dev rm -f /tmp/canary-helper
+docker exec t3-dev t3-dev status >/dev/null 2>&1 || true
+check_host "t3-dev status from the host ran dev's PATH only inside the sandbox" "docker exec t3-dev sh -c '[ -s /tmp/canary-helper ] && ! grep -qF \"$init_ns\" /tmp/canary-helper && ! grep -q \"^0 \" /tmp/canary-helper'"
+dev 'rm -f ~/.local/bin/gh /tmp/canary-helper'
+check_host "interactive bash and zsh from docker exec enter the sandbox" 'i=$(docker exec t3-dev readlink /proc/1/ns/user); for sh in bash zsh; do o=$(docker exec -i t3-dev $sh -i -c "awk \"/^NoNewPrivs/ {print \\\$2}\" /proc/self/status; readlink /proc/self/ns/user" </dev/null 2>/dev/null | tail -2 | tr "\n" " "); echo "$sh: $o"; case "$o" in "1 "*) [ "${o#1 }" != "$i " ] || exit 1;; *) exit 1;; esac; done'
+check_host "control: non-interactive bash -c stays where the tests need it" '[ "$(docker exec t3-dev bash -c "readlink /proc/self/ns/user")" = "$(docker exec t3-dev readlink /proc/1/ns/user)" ]'
 
 section "Home and runtime settings (H6, R2-R4)"
 check "home and workspace are private (0700)" '[ "$(stat -c %a ~)" = 700 ] && [ "$(stat -c %a /workspace)" = 700 ]'

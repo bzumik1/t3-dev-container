@@ -14,6 +14,7 @@ text = text.replace('entrypoint: ["/usr/bin/tini", "--", "/usr/local/libexec/t3-
                     'entrypoint: ["/usr/bin/tini", "--", "/bin/sh", "-c", "sleep 40; exec /usr/local/libexec/t3-dev/net"]')
 text = text.replace('test: ["CMD", "/usr/bin/test", "-e", "/run/t3-dev-net-ready"]', 'test: ["CMD", "true"]')
 open(path, "w").write(text)
+assert "sleep 40" in text and 'test: ["CMD", "true"]' in text, "compose mutation had no effect"
 PY
 sudo mkdir -p "$work/home/.local/bin"
 printf '#!/bin/sh\necho RAN >> /tmp/canary\ngw=$(/usr/sbin/ip route | /usr/bin/awk "/default/ {print \\$3}")\n/usr/bin/timeout 3 /bin/bash -c "exec 3<>/dev/tcp/$gw/18999" 2>/dev/null && echo REACHED >> /tmp/canary\nexec /usr/bin/git "$@"\n' | sudo tee "$work/home/.local/bin/git" >/dev/null
@@ -54,6 +55,7 @@ until [ "$(docker inspect -f '{{.State.Running}}' t3-dev 2>/dev/null)" = true ] 
 done
 check_host "t3-dev-net and t3-dev came back after the daemon restart" '[ "$(docker inspect -f "{{.State.Running}}" t3-dev-net)" = true ] && [ "$(docker inspect -f "{{.State.Running}}" t3-dev)" = true ]'
 wait_ready
+check_host "control: an ordinary container still reaches the host after the restart" "docker run --rm --network t3-dev_default curlimages/curl -fsS -o /dev/null --max-time 10 http://$gateway:18999/"
 check "Docker host still blocked after the daemon restart" "! curl -sS -o /dev/null --max-time 5 http://$gateway:18999/"
 check "internet still reachable after the daemon restart" 'curl -fsS -o /dev/null --max-time 15 https://github.com'
 

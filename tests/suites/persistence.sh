@@ -26,3 +26,9 @@ sudo chown root:root "$work/home" "$work/workspace"
 docker compose -f "$compose" up -d
 wait_ready
 check "root-owned volume directories are handed back to dev" '[ "$(stat -c %u ~ /workspace | sort -u)" = 1000 ]'
+
+section "Healthcheck needs both dockerd and t3 (N10)"
+check_host "control: healthy before" 'for i in $(seq 40); do [ "$(docker inspect -f "{{.State.Health.Status}}" t3-dev)" = healthy ] && exit 0; sleep 5; done; exit 1'
+dev 'supervisorctl -c /etc/t3-dev/supervisord.conf stop t3' >/dev/null
+check_host "unhealthy once t3 is stopped" 'for i in $(seq 40); do [ "$(docker inspect -f "{{.State.Health.Status}}" t3-dev)" = unhealthy ] && exit 0; sleep 5; done; exit 1'
+dev 'supervisorctl -c /etc/t3-dev/supervisord.conf start t3' >/dev/null

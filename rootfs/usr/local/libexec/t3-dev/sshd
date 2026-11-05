@@ -14,6 +14,12 @@ if [ ! -s "$keys" ]; then
   until [ -s "$keys" ]; do sleep 10; done
 fi
 
+# Replaces StrictModes (off because the namespace shows root as nobody).
+if [ -L "$keys" ] || [ -n "$(find "$keys" /etc/t3-dev/shared -maxdepth 0 -perm /022)" ]; then
+  log "CHYBA: $keys je odkaz nebo je zapisovatelný pro skupinu či ostatní, SSH nespouštím."
+  exit 1
+fi
+
 host_dir="$HOME/.ssh/host-keys"
 install -d -m 0700 "$HOME/.ssh" "$host_dir"
 host_key="$host_dir/ssh_host_ed25519_key"

@@ -37,3 +37,13 @@ check "control: pnpm installs an old version" 'd=$(mktemp -d) && cd $d && echo "
 check "pnpm-workspace.yaml cannot disable the pnpm cooldown (functional)" 'd=$(mktemp -d) && cd $d && v=$(npm view typescript@next version --min-release-age=0) && echo "{}" > package.json && printf "minimumReleaseAge: 0\n" > pnpm-workspace.yaml && ! pnpm add "typescript@$v" >/dev/null 2>&1'
 check "a project registry cannot replace the public registry" 'd=$(mktemp -d) && cd $d && printf "registry=https://example.invalid/\n" > .npmrc && [ "$(npm config get registry)" = https://registry.npmjs.org/ ] && [ "$(pnpm config get registry)" = https://registry.npmjs.org/ ]'
 check "uv cooldown set in the environment" '[ "$UV_EXCLUDE_NEWER" = "3 days" ]'
+
+section "Tools work in the agents' sandbox (where T3 and the agents really run)"
+wait_for "rootless dockerd answers" 180 'docker info'
+check_agent "control: this is the sandbox" '[ "$(awk "/^NoNewPrivs:/ {print \$2}" /proc/self/status)" = 1 ] && ! readlink /proc/1/ns/user >/dev/null 2>&1'
+check_agent "nested Docker" 'docker run --rm alpine true'
+check_agent "bubblewrap (Claude Code and Codex sandboxes)" 'bwrap --unshare-all --die-with-parent --ro-bind / / --proc /proc --dev /dev true'
+check_agent "git repository in /workspace (safe.directory)" 'rm -rf /workspace/sbx && git init -q /workspace/sbx && git -C /workspace/sbx status --short'
+check_agent "mise runtime" 'mise exec node@22 -- node -v | grep -q "^v22"'
+check_agent "npm install with the protections" 'd=$(mktemp -d) && cd $d && npm init -y >/dev/null && npm install typescript@5.4.5 >/dev/null 2>&1'
+check_agent "t3-dev status" 't3-dev status'

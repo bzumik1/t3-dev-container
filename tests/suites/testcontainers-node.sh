@@ -3,7 +3,7 @@ start "$image"
 wait_ready
 
 section "Testcontainers (Node)"
-check "PostgreSQL in Testcontainers from Node" '
+check_agent "PostgreSQL in Testcontainers from Node" '
   d=/workspace/tc-node && mkdir -p $d && cd $d && npm init -y >/dev/null &&
   npm install testcontainers @testcontainers/postgresql pg >/dev/null 2>&1 &&
   cat > test.mjs <<EOF
