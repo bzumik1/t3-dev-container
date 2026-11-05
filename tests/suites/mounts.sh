@@ -29,5 +29,6 @@ if findmnt -no OPTIONS --target "$work/home" | grep -qw nosuid; then
 else
   skip "volumes are not nosuid,nodev (needs pre-created host dirs; owner decision H6)"
 fi
+check_host "control: the setuid bit dev set is visible on the host" '[ -n "$(sudo find "$work/home" -name suid-test -perm -4000 -print -quit)" ]'
 dev 'rm -f ~/suid-test'
-check_host "no setuid or setgid files anywhere in the volumes" '[ -z "$(sudo find "$work/home" "$work/workspace" "$work/shared" -perm /6000 -print -quit)" ]'
+check_host "no other setuid or setgid files in the volumes" '[ -z "$(sudo find "$work/home" "$work/workspace" "$work/shared" -perm /6000 -print -quit)" ]'

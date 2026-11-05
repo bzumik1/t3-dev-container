@@ -44,8 +44,24 @@ jobs:
           . rootfs/usr/local/libexec/t3-dev/net-lib
           [ "$(classify_fetch 0 200)" = keys ] && [ "$(classify_fetch 22 404)" = none ] && [ "$(classify_fetch 0 404)" = none ]
           [ "$(classify_fetch 22 503)" = cache ] && [ "$(classify_fetch 22 429)" = cache ] && [ "$(classify_fetch 7 000)" = cache ] && [ "$(classify_fetch 63 200)" = cache ]
-      - name: Helpers and README never suggest docker exec without no_new_privs
-        run: "! grep -nE \"docker exec (-u dev )?t3-dev (t3-dev|zsh|bash)\" rootfs/usr/local/bin/t3-dev README.md"
+      - name: Every docker exec the README or the helper suggests goes through t3-dev shell
+        run: |
+          if grep -n "docker exec" README.md rootfs/usr/local/bin/t3-dev | grep -v "t3-dev shell" | grep -v -- "-u 0"; then exit 1; fi
+      - name: seccomp.json keeps the dangerous syscalls out of every unconditional allow rule
+        run: |
+          python3 - <<'PY'
+          import json, sys
+          profile = json.load(open("seccomp.json"))
+          forbidden = {"bpf", "perf_event_open", "kexec_load", "kexec_file_load", "init_module", "finit_module", "delete_module",
+                       "userfaultfd", "io_uring_setup", "io_uring_enter", "io_uring_register", "open_by_handle_at", "keyctl", "add_key", "request_key"}
+          bad = [n for r in profile["syscalls"] if r["action"] == "SCMP_ACT_ALLOW" and not r.get("includes", {}).get("caps")
+                 for n in r["names"] if n in forbidden]
+          errno_rules = {n: r.get("errnoRet") for r in profile["syscalls"] if r["action"] == "SCMP_ACT_ERRNO" for n in r["names"]}
+          if errno_rules.get("keyctl") != 38:
+              bad.append("keyctl must return ENOSYS (entrypoint fingerprint)")
+          print("\n".join(bad) or "ok")
+          sys.exit(1 if bad else 0)
+          PY
       - name: Every npm/npx/pnpm call in the Dockerfile ignores install scripts
         run: "! grep -nE \"(^|[ ;&|(])(npm|npx|pnpm) \" Dockerfile | grep -v NPM_CONFIG_IGNORE_SCRIPTS=true"
       - name: README tells clients how to connect safely
@@ -169,8 +185,8 @@ jobs:
           sudo apt-get install -y -q --allow-downgrades "docker-ce=$engine" "docker-ce-cli=$cli" containerd.io docker-compose-plugin
           sudo systemctl restart docker
           docker version
-      - name: Make the runner behave like ZimaOS (no AppArmor userns restriction)
-        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - name: Make the runner behave like ZimaOS (no AppArmor userns restriction, no Yama ptrace restriction)
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 kernel.yama.ptrace_scope=0
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: image
@@ -194,8 +210,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Make the runner behave like ZimaOS (no AppArmor userns restriction)
-        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - name: Make the runner behave like ZimaOS (no AppArmor userns restriction, no Yama ptrace restriction)
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 kernel.yama.ptrace_scope=0
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: image
