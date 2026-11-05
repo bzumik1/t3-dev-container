@@ -30,7 +30,6 @@ services:
     command: psql -h db -U postgres -tAc "select 42"
 EOF
   cd $d && docker compose up --abort-on-container-exit --exit-code-from client 2>&1 | tee /tmp/compose.log && grep -q "42" /tmp/compose.log; s=$?; docker compose down -v; exit $s'
-check "privileged nested container is refused or harmless" 'docker run --rm --privileged alpine true 2>/dev/null; docker run --rm alpine true'
 check "volumes keep data" 'docker volume create t3v && docker run --rm -v t3v:/d alpine sh -c "echo x > /d/f" && docker run --rm -v t3v:/d alpine cat /d/f | grep -qx x && docker volume rm t3v'
 check "docker system df works" 'docker system df'
 
@@ -39,6 +38,7 @@ gateway=$(dev "ip route | awk '/default/ {print \$3}'")
 python3 -m http.server 18999 --bind 0.0.0.0 >/dev/null 2>&1 &
 host_server=$!
 sleep 2
+check "control: a privileged nested container starts" 'docker run --rm --privileged alpine true'
 check "privileged nested container cannot write host kernel settings" '! docker run --rm --privileged alpine sh -c "echo x > /proc/sys/kernel/core_pattern" 2>/dev/null'
 check "privileged nested container cannot reach the Docker host" "! docker run --rm --privileged alpine wget -q -O /dev/null -T 5 http://$gateway:18999/"
 check "nested NET_ADMIN host-network container cannot bypass the firewall" "! docker run --rm --cap-add NET_ADMIN --network host alpine sh -c 'apk add -q iptables >/dev/null 2>&1; iptables -F 2>/dev/null; iptables -P OUTPUT ACCEPT 2>/dev/null; wget -q -O /dev/null -T 5 http://$gateway:18999/'"
@@ -48,7 +48,8 @@ check "nested daemon publishes ports on 127.0.0.1 only" 'docker run -d --name p1
 check "nested daemon uses the local log driver" 'docker info -f "{{.LoggingDriver}}" | grep -qx local'
 ip=$(docker inspect -f "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}" t3-dev-net)
 dev 'docker run -d --name p2 -p 0.0.0.0:18082:80 nginx:alpine >/dev/null; sleep 3'
+check "control: the 0.0.0.0-published nested port answers inside" 'curl -fsS -o /dev/null --max-time 5 http://127.0.0.1:18082/'
 check_host "an explicitly 0.0.0.0-published nested port is still unreachable from the host" "! curl -sS -o /dev/null --max-time 5 http://$ip:18082/"
 dev 'docker rm -f p2 >/dev/null'
-check "maintenance pass runs" 'docker run --name stopped alpine true && /usr/local/libexec/t3-dev/maintenance --once && docker system df'
+check "maintenance removes stopped containers" 'docker run --name stopped alpine true && [ -n "$(docker ps -aq --filter name=^stopped$)" ] && MAINTENANCE_UNTIL=0s /usr/local/libexec/t3-dev/maintenance --once && [ -z "$(docker ps -aq --filter name=^stopped$)" ]'
 kill "$host_server"

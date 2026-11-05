@@ -11,30 +11,46 @@ section "Sandbox self-check in the entrypoint"
 if [ -f "$compose" ]; then docker compose -f "$compose" down --volumes --timeout 30 >/dev/null 2>&1 || true; fi
 sudo rm -rf "$work"
 write_compose "$image"
-sed -i 's/^      - SETGID$/      - SETGID\n      - DAC_OVERRIDE/' "$compose"
+mutate 's/^      - SETGID$/      - SETGID\n      - DAC_OVERRIDE/'
 docker compose -f "$compose" up -d --quiet-pull || true
 refuses "extra capability" "CapBnd"
 
 write_compose "$image"
-sed -i "s#^      - seccomp=.*#      - seccomp=unconfined#" "$compose"
+mutate "s#^      - seccomp=.*#      - seccomp=unconfined#"
 docker compose -f "$compose" up -d --quiet-pull || true
-refuses "seccomp profile missing" "seccomp"
+refuses "seccomp off" "seccomp filtr chybí"
 
 write_compose "$image"
-sed -i '/net.ipv6.conf.all.disable_ipv6/d; /net.ipv6.conf.default.disable_ipv6/d; /^    sysctls:$/d' "$compose"
+mutate "/^      - seccomp=/d"
+docker compose -f "$compose" up -d --quiet-pull || true
+refuses "Docker default seccomp instead of seccomp.json (UI dropped the option)" "seccomp.json) není"
+
+write_compose "$image"
+mutate '/net.ipv6.conf.all.disable_ipv6/d; /net.ipv6.conf.default.disable_ipv6/d; /^    sysctls:$/d'
 docker compose -f "$compose" up -d --quiet-pull || true
 sleep 25
 if docker exec t3-dev-net cat /proc/sys/net/ipv6/conf/all/disable_ipv6 2>/dev/null | grep -qx 0; then
   refuses "IPv6 left on" "IPv6"
 else
-  pass "IPv6 left on: runner has no IPv6, nothing to check"
+  skip "IPv6 left on: Docker kept IPv6 disabled on this runner"
   docker compose -f "$compose" down --timeout 30 >/dev/null 2>&1 || true
 fi
 
 write_compose "$image"
-sed -i 's#^    user: "1000:1000"#    user: "0:0"#' "$compose"
+mutate 's#^    user: "1000:1000"#    user: "0:0"#'
 docker compose -f "$compose" up -d --quiet-pull || true
 refuses "running as root" "uživatel dev"
+
+write_compose "$image"
+mutate 's#^    network_mode: "service:t3-dev-net"#    network_mode: bridge#'
+mutate '/^      t3-dev-net:$/,/^        condition: service_healthy$/d'
+docker compose -f "$compose" up -d --quiet-pull || true
+refuses "network_mode dropped (no shared firewall)" "firewall t3-dev-net nechrání"
+
+write_compose "$image"
+mutate '/^      - \/DATA.*\/var\/lib\/t3-dev\/docker$/d'
+docker compose -f "$compose" up -d --quiet-pull || true
+refuses "nested Docker data volume missing" "není samostatný svazek"
 
 section "Correct configuration starts"
 start "$image"

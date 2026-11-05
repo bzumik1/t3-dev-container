@@ -55,7 +55,8 @@ RUN userdel -r ubuntu 2>/dev/null || true \
  && usermod -p '*' dev \
  && echo "dev:100000:65536" > /etc/subuid \
  && echo "dev:100000:65536" > /etc/subgid \
- && mkdir -p /workspace /home/dev/.local/share/docker /home/dev/.config/t3-dev /etc/t3-dev/ssh \
+ && mkdir -p /workspace /home/dev/.config/t3-dev /etc/t3-dev/shared \
+ && install -d -m 0700 -o 1000 -g 1000 /var/lib/t3-dev/docker \
  && install -d -m 0700 -o 1000 -g 1000 /run/user/1000 \
  && ln -sf /home/dev/.config/t3-dev/machine-info /etc/machine-info \
  && chown -R dev:dev /workspace /home/dev \
@@ -64,7 +65,7 @@ RUN userdel -r ubuntu 2>/dev/null || true \
  && getcap -r /usr /opt 2>/dev/null | awk "{print \$1}" | xargs -r -n1 setcap -r \
  && setcap cap_setuid=ep /usr/bin/newuidmap \
  && setcap cap_setgid=ep /usr/bin/newgidmap \
- && sed -i '1i if [ "$(id -u)" = 0 ]; then export HOME=/root PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; fi' /etc/bash.bashrc \
+ && sed -i '1i if [ "$EUID" = 0 ]; then export HOME=/root PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin; fi' /etc/bash.bashrc \
  && rm -f /etc/update-motd.d/* /etc/legal
 
 COPY rootfs/ /
@@ -76,7 +77,11 @@ ENV XDG_RUNTIME_DIR=/run/user/1000 \
     NPM_CONFIG_IGNORE_SCRIPTS=true \
     NPM_CONFIG_MIN_RELEASE_AGE=3 \
     PNPM_CONFIG_MINIMUM_RELEASE_AGE=4320 \
-    UV_EXCLUDE_NEWER="3 days"
+    UV_EXCLUDE_NEWER="3 days" \
+    NPM_CONFIG_REGISTRY=https://registry.npmjs.org/ \
+    PNPM_CONFIG_REGISTRY=https://registry.npmjs.org/ \
+    PNPM_CONFIG_MINIMUM_RELEASE_AGE_IGNORE_MISSING_TIME=false \
+    T3_DEV_COMPOSE_REQUIRED=4
 
 USER 1000:1000
 
@@ -87,6 +92,6 @@ EXPOSE 2222
 STOPSIGNAL SIGTERM
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
-  CMD ["/usr/local/bin/t3-dev", "health"]
+  CMD ["/usr/bin/setpriv", "--no-new-privs", "--", "/usr/local/bin/t3-dev", "health"]
 
 ENTRYPOINT ["/usr/local/bin/t3-dev-entrypoint"]

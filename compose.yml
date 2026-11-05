@@ -7,6 +7,8 @@ services:
     entrypoint: ["/usr/local/libexec/t3-dev/init-volumes"]
     user: "0:0"
     network_mode: none
+    environment:
+      T3_DEV_COMPOSE: "4"
     restart: "no"
     read_only: true
     cap_drop:
@@ -18,7 +20,7 @@ services:
     volumes:
       - /DATA/AppData/t3-dev/home:/home/dev
       - /DATA/AppData/t3-dev/workspace:/workspace
-      - /DATA/AppData/t3-dev/docker:/home/dev/.local/share/docker
+      - /DATA/AppData/t3-dev/docker:/var/lib/t3-dev/docker
     logging:
       driver: local
       options:
@@ -36,6 +38,7 @@ services:
     tmpfs:
       - /run:size=1m
     environment:
+      T3_DEV_COMPOSE: "4"
       GITHUB_USER: ""
       SSH_AUTHORIZED_KEYS: ""
       FIREWALL: "on"
@@ -44,7 +47,7 @@ services:
       - 9.9.9.9
       - 149.112.112.112
     volumes:
-      - /DATA/AppData/t3-dev/ssh:/etc/t3-dev/ssh
+      - /DATA/AppData/t3-dev/shared:/etc/t3-dev/shared
     ports:
       - "2222:2222"
     cap_drop:
@@ -93,6 +96,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
     environment:
+      T3_DEV_COMPOSE: "4"
       SERVER_NAME: T3 Dev
       GIT_NAME: ""
       GIT_EMAIL: ""
@@ -101,8 +105,8 @@ services:
     volumes:
       - /DATA/AppData/t3-dev/home:/home/dev
       - /DATA/AppData/t3-dev/workspace:/workspace
-      - /DATA/AppData/t3-dev/docker:/home/dev/.local/share/docker
-      - /DATA/AppData/t3-dev/ssh:/etc/t3-dev/ssh:ro
+      - /DATA/AppData/t3-dev/docker:/var/lib/t3-dev/docker
+      - /DATA/AppData/t3-dev/shared:/etc/t3-dev/shared:ro
     cap_drop:
       - ALL
     cap_add:
@@ -155,7 +159,7 @@ services:
         - container: /workspace
           description:
             en_us: Projects
-        - container: /home/dev/.local/share/docker
+        - container: /var/lib/t3-dev/docker
           description:
             en_us: Data of the Docker inside the container (images, containers); no need to back up
 

@@ -1,0 +1,7 @@
+#!/bin/bash
+# Refuses to run when the compose.yml in use is older than this image needs:
+# updating only the image would silently miss new security options.
+if [ "${T3_DEV_COMPOSE:-0}" -lt "${T3_DEV_COMPOSE_REQUIRED:-0}" ] 2>/dev/null || [ -z "${T3_DEV_COMPOSE:-}" ]; then
+  printf '[t3-dev] CHYBA: compose.yml je zastaralý (verze %s, image potřebuje %s). Importujte nový compose.yml a seccomp.json podle README.\n' "${T3_DEV_COMPOSE:-žádná}" "$T3_DEV_COMPOSE_REQUIRED"
+  exit 1
+fi

@@ -33,10 +33,31 @@ jobs:
         run: docker run --rm -i hadolint/hadolint@sha256:fdf19d026b54834f88c62774fdf2a61ff3b586a42632e5070674d41a796bfdf3 hadolint --failure-threshold error - < Dockerfile
       - name: compose.yml is valid
         run: docker compose -f compose.yml config -q
+      - name: No mount target of a service lies inside another of its volumes
+        run: |
+          python3 - <<'PY'
+          import json, subprocess, sys
+          config = json.loads(subprocess.check_output(["docker", "compose", "-f", "compose.yml", "config", "--format", "json"]))
+          bad = []
+          for name, service in config["services"].items():
+              targets = [v["target"] for v in service.get("volumes", [])]
+              for t in targets:
+                  for o in targets:
+                      if t != o and (t + "/").startswith(o.rstrip("/") + "/"):
+                          bad.append(f"{name}: {t} inside {o}")
+          print("\n".join(bad) or "ok")
+          sys.exit(1 if bad else 0)
+          PY
+      - name: compose.yml version matches the image
+        run: |
+          want=$(sed -n 's/^    T3_DEV_COMPOSE_REQUIRED=//p' Dockerfile)
+          [ "$(grep -c "T3_DEV_COMPOSE: \"$want\"" compose.yml)" = 3 ]
       - name: seccomp.json matches its generator
         run: |
           node scripts/generate-seccomp.mjs > /tmp/seccomp.json
           diff -u seccomp.json /tmp/seccomp.json
+      - name: README pins the current seccomp.json hash
+        run: grep -q "$(sha256sum seccomp.json | cut -d" " -f1)" README.md
       - name: README does not promise a harmless root exec
         run: "! grep -q \"nemá žádná užitečná oprávnění\" README.md"
       - name: No floating @latest installs in the Dockerfile
@@ -96,6 +117,7 @@ jobs:
           - docker-27
           - startup
           - selfcheck
+          - mounts
     name: test (${{ matrix.suite }})
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

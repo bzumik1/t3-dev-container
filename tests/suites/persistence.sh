@@ -8,7 +8,7 @@ section "docker restart"
 docker restart -t 60 t3-dev >/dev/null
 wait_ready
 check "home, workspace and nested images survive a restart" '[ -f /workspace/marker ] && [ -f ~/marker ] && docker image inspect alpine >/dev/null && docker volume inspect keepvol >/dev/null'
-check "no stale runtime files break startup" 'pgrep -x sshd && pgrep -f "t3 serve" || pgrep -f t3-dev/t3'
+check "services are back after the restart" 'pgrep -x sshd && { pgrep -f "t3 serve" || pgrep -f t3-dev/t3; }'
 
 section "recreate (new container, same volumes)"
 restart_with "$image" "GITHUB_USER=bzumik1" "SERVER_NAME=Renamed"

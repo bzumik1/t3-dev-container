@@ -17,9 +17,10 @@ check "other ports on the same host stay blocked" "! curl -sS -o /dev/null --max
 check "rest of the LAN still blocked" '! curl -sS -o /dev/null --max-time 5 http://192.168.1.1/'
 restart_with "$image" "FIREWALL_ALLOW=$gateway"
 wait_ready
+check_host "conntrack table was flushed when the rules loaded" 'docker logs t3-dev-net 2>&1 | grep -q "Starší spojení ukončena"'
 check "a whole-host exception opens all its ports" "curl -fsS -o /dev/null --max-time 10 http://$gateway:18998/"
 
-for bad in "0.0.0.0/0" "192.168.0.0/8" "*" "1.2.3.4;rm" "300.1.1.1"; do
+for bad in "0.0.0.0/0" "192.168.0.0/8" "192.168.0.0/16" "10.0.0.0/20" "*" "1.2.3.4;rm" "300.1.1.1" "010.0.0.1" "1.2.3.4:0" "1.2.3.4:65536" "1.2.3.4/33" "fd00::1" "198.18.0.1"; do
   restart_with "$image" "FIREWALL_ALLOW=$bad"
   sleep 15
   check_host "FIREWALL_ALLOW='$bad' is refused and t3-dev does not start" '[ "$(docker inspect -f "{{.State.Running}}" t3-dev 2>/dev/null)" != true ] || ! docker exec t3-dev pgrep -x supervisord >/dev/null 2>&1'

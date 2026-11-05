@@ -1,13 +1,25 @@
 # shellcheck shell=bash disable=SC2016,SC2154
 previous=ghcr.io/bzumik1/t3-dev-container:latest
 
+section "New image with an outdated compose.yml refuses to start and says why (U1)"
+start "$image"
+docker compose -f "$compose" down --volumes --timeout 30 >/dev/null 2>&1 || true
+sudo rm -rf "$work"
+write_compose "$image"
+mutate '/T3_DEV_COMPOSE/d'
+docker compose -f "$compose" up -d --quiet-pull || true
+sleep 20
+check_host "t3-dev-net refuses with an outdated compose.yml" 'docker logs t3-dev-net 2>&1 | grep -q "compose.yml je zastaralý"'
+check_host "t3-dev does not run services" '! docker exec t3-dev pgrep -x supervisord >/dev/null 2>&1'
+docker compose -f "$compose" down --volumes --timeout 30 >/dev/null 2>&1 || true
+
 section "Upgrade from the published image"
 if ! docker pull -q "$previous" >/dev/null 2>&1; then
-  pass "no published image yet, nothing to upgrade from"
+  skip "no published image yet, nothing to upgrade from"
   return 0
 fi
-if [ "$(docker image inspect -f "{{.Config.User}}" "$previous")" != 1000:1000 ]; then
-  pass "published image predates the rootless layout, no upgrade path to test yet"
+if [ "$(docker image inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$previous" | sed -n 's/^T3_DEV_COMPOSE_REQUIRED=//p')" != "$(sed -n 's/^    T3_DEV_COMPOSE_REQUIRED=//p' "$root/Dockerfile")" ]; then
+  skip "published image needs another compose.yml version; upgrading means importing the new compose.yml"
   return 0
 fi
 start "$previous" "GITHUB_USER=bzumik1"

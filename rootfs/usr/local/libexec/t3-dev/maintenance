@@ -7,10 +7,10 @@ set -uo pipefail
 
 pass() {
   docker info >/dev/null 2>&1 || return 0
-  docker container prune -f --filter until=168h >/dev/null 2>&1
-  docker builder prune -f --filter until=168h >/dev/null 2>&1
-  docker image prune -f --filter until=168h >/dev/null 2>&1
-  printf '[t3-dev] Údržba: vnořený Docker zabírá %s.\n' "$(du -sh "$HOME/.local/share/docker" 2>/dev/null | cut -f1)"
+  docker container prune -f --filter "until=${MAINTENANCE_UNTIL:-168h}" >/dev/null 2>&1
+  docker builder prune -f --filter "until=${MAINTENANCE_UNTIL:-168h}" >/dev/null 2>&1
+  docker image prune -f --filter "until=${MAINTENANCE_UNTIL:-168h}" >/dev/null 2>&1
+  printf '[t3-dev] Údržba: vnořený Docker zabírá %s.\n' "$(du -sh /var/lib/t3-dev/docker 2>/dev/null | cut -f1)"
 }
 
 if [ "${1:-}" = --once ]; then
