@@ -6,3 +6,5 @@ scripts
 LICENSE
 compose.yml
 seccomp.json
+.agents
+.claude

@@ -28,7 +28,7 @@ jobs:
         with:
           persist-credentials: false
       - name: ShellCheck
-        run: shellcheck -x -P tests tests/run.sh tests/lib.sh tests/suites/*.sh rootfs/usr/local/libexec/t3-dev/net-lib scripts/lint-docker-exec.sh $(grep -lE "^#!/bin/(ba)?sh" rootfs/usr/local/bin/* rootfs/usr/local/libexec/t3-dev/*)
+        run: shellcheck -x -P tests tests/run.sh tests/lib.sh tests/suites/*.sh rootfs/usr/local/libexec/t3-dev/net-lib scripts/lint-docker-exec.sh scripts/check-agent-files.sh $(grep -lE "^#!/bin/(ba)?sh" rootfs/usr/local/bin/* rootfs/usr/local/libexec/t3-dev/*)
       - name: Hadolint
         run: docker run --rm -i hadolint/hadolint@sha256:fdf19d026b54834f88c62774fdf2a61ff3b586a42632e5070674d41a796bfdf3 hadolint --failure-threshold error - < Dockerfile
       - name: compose.yml is valid
@@ -85,6 +85,11 @@ jobs:
         run: "! grep -q \"nemá žádná užitečná oprávnění\" README.md"
       - name: No floating @latest installs in the Dockerfile
         run: "! grep -nE \"@latest\" Dockerfile"
+      - name: Agent instructions stay in one place for Codex, Claude Code and OpenCode
+        run: |
+          scripts/check-agent-files.sh
+          cp -a . /tmp/agents && printf 'x\n' > /tmp/agents/tests/AGENTS.md && git -C /tmp/agents add tests/AGENTS.md
+          if scripts/check-agent-files.sh /tmp/agents; then echo "control: a nested AGENTS.md was not caught"; exit 1; fi
 
   build:
     runs-on: ubuntu-24.04

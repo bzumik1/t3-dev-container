@@ -124,7 +124,7 @@ Když nový image potřebuje nový `compose.yml` (proměnná `T3_DEV_COMPOSE`), 
 
 ## Instrukce pro agenty
 
-Agenti dostávají popis prostředí a jeho pravidel ([`rootfs/etc/t3-dev/AGENTS.md`](rootfs/etc/t3-dev/AGENTS.md)) na začátek svých globálních instrukcí (`~/.codex/AGENTS.md`, `~/.claude/CLAUDE.md`, `~/.config/opencode/AGENTS.md`). Blok mezi značkami `t3-dev:begin` a `t3-dev:end` se při každém startu obnoví z image, vlastní text pod ním zůstane. Když agent narazí na omezení kontejneru, má navrhnout změnu jako issue nebo PR v tomto repozitáři, ale nikdy ji sám nesloučit ani neschválit publikaci.
+Agenti dostávají popis prostředí a jeho pravidel ([`rootfs/etc/t3-dev/agent-environment.md`](rootfs/etc/t3-dev/agent-environment.md)) na začátek svých globálních instrukcí (`~/.codex/AGENTS.md`, `~/.claude/CLAUDE.md`, `~/.config/opencode/AGENTS.md`). Blok mezi značkami `t3-dev:begin` a `t3-dev:end` se při každém startu obnoví z image, vlastní text pod ním zůstane. Když agent narazí na omezení kontejneru, má navrhnout změnu jako issue nebo PR v tomto repozitáři, ale nikdy ji sám nesloučit ani neschválit publikaci.
 
 ## Pomocník `t3-dev`
 
@@ -150,4 +150,4 @@ Z hostitele: `sudo docker exec -it t3-dev t3-dev shell` (shell se stejnými omez
 
 ## Vývoj
 
-Změny přes PR. CI sestaví image a v desítkách souběžných jobů ho spustí se stejnými volbami jako `compose.yml`: izolace a oprávnění, Docker uvnitř, firewall, SSH, seccomp, limity, nástroje, Testcontainers v Javě i Node, agenti, restart a aktualizace, Docker 27.5.1 jako na ZimaOS a skutečný projekt (backend, frontend, e2e a celý stack). Pak image proskenuje Trivy a z `main` ho publikuje do ghcr.io s atestací původu.
+Změny přes PR. Pokyny pro agenty, kteří repozitář vyvíjejí (Codex, Claude Code, OpenCode), jsou v [`AGENTS.md`](AGENTS.md) a postupy pro konkrétní změny ve skills v [`.agents/skills`](.agents/skills). CI sestaví image a v desítkách souběžných jobů ho spustí se stejnými volbami jako `compose.yml`: izolace a oprávnění, Docker uvnitř, firewall, SSH, seccomp, limity, nástroje, Testcontainers v Javě i Node, agenti, restart a aktualizace, Docker 27.5.1 jako na ZimaOS a skutečný projekt (backend, frontend, e2e a celý stack). Pak image proskenuje Trivy a z `main` ho publikuje do ghcr.io s atestací původu.

@@ -1,12 +1,14 @@
 #!/bin/bash
 # Keeps the environment instructions for the agents up to date: on every start
 # the block between the t3-dev markers at the top of each agent's global
-# instructions file is replaced with /etc/t3-dev/AGENTS.md. Anything the owner
-# wrote outside the block stays as it is.
+# instructions file is replaced with /etc/t3-dev/agent-environment.md. Anything
+# the owner wrote outside the block stays as it is. The source is not named
+# AGENTS.md, because OpenCode would load it as nested instructions for this
+# repository whenever an agent reads a file in rootfs/etc/t3-dev.
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 set -euo pipefail
 
-source=/etc/t3-dev/AGENTS.md
+source=/etc/t3-dev/agent-environment.md
 begin='<!-- t3-dev:begin (managed by the t3-dev image, edits inside are replaced on start) -->'
 end='<!-- t3-dev:end -->'
 
