@@ -47,7 +47,7 @@ jobs:
       - name: Helpers and README never suggest docker exec without no_new_privs
         run: "! grep -nE \"docker exec (-u dev )?t3-dev (t3-dev|zsh|bash)\" rootfs/usr/local/bin/t3-dev README.md"
       - name: Every npm/npx/pnpm call in the Dockerfile ignores install scripts
-        run: "! grep -nE \"(npm|npx|pnpm) \" Dockerfile | grep -v NPM_CONFIG_IGNORE_SCRIPTS=true"
+        run: "! grep -nE \"(^|[ ;&|(])(npm|npx|pnpm) \" Dockerfile | grep -v NPM_CONFIG_IGNORE_SCRIPTS=true"
       - name: README tells clients how to connect safely
         run: grep -q "KbdInteractiveAuthentication no" README.md && grep -q "IdentitiesOnly yes" README.md
       - name: No mount target of a service lies inside another of its volumes

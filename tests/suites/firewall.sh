@@ -26,7 +26,9 @@ else
 fi
 check "nested container: internet reachable" 'docker run --rm alpine wget -q -O /dev/null -T 15 https://github.com'
 check "nested container: Docker host blocked" "! docker run --rm alpine wget -q -O /dev/null -T 5 http://$gateway:18999/"
-check "nested container: home LAN rejected by the firewall (not a timeout)" "docker run --rm python:3-alpine python -I -c \"import errno,socket,sys; s=socket.socket(); s.settimeout(5); e=s.connect_ex((sys.argv[1],int(sys.argv[2]))); print(e); sys.exit(0 if e in (errno.EHOSTUNREACH,errno.EPERM,errno.EACCES) else 1)\" 192.168.1.1 80"
+# slirp4netns turns the local REJECT into a reset for the nested container; on the runner
+# 192.168.1.1 does not exist, so without the firewall this would time out instead.
+check "nested container: home LAN rejected by the firewall (not a timeout)" "docker run --rm python:3-alpine python -I -c \"import errno,socket,sys; s=socket.socket(); s.settimeout(5); e=s.connect_ex((sys.argv[1],int(sys.argv[2]))); print(e); sys.exit(0 if e in (errno.EHOSTUNREACH,errno.EPERM,errno.EACCES,errno.ECONNREFUSED) else 1)\" 192.168.1.1 80"
 check "control: a host-network nested container reaches the internet" 'docker run --rm --network host alpine wget -q -O /dev/null -T 15 https://github.com'
 check "nested host-network container: Docker host blocked" "! docker run --rm --network host alpine wget -q -O /dev/null -T 5 http://$gateway:18999/"
 

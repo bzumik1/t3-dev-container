@@ -37,9 +37,10 @@ check_host "image has no PATH or HOME pointing into /home/dev" '! docker image i
 check_host "root exec gets HOME=/root, dev gets /home/dev" '[ "$(docker exec -u 0 t3-dev printenv HOME)" = /root ] && [ "$(docker exec t3-dev printenv HOME)" = /home/dev ]'
 check_host "t3-dev-net has no HOME in the home volume" '! docker inspect -f "{{range .Config.Env}}{{println .}}{{end}}" t3-dev-net | grep -q "^HOME=/home/dev"'
 dev 'mkdir -p ~/.local/bin && for c in cat sed grep git ls id awk printf; do printf "#!/bin/sh\ntouch /tmp/canary-\$(/usr/bin/id -u)-%s\nexec /usr/bin/%s \"\$@\"\n" $c $c > ~/.local/bin/$c; chmod +x ~/.local/bin/$c; done; echo "touch /tmp/canary-\$(/usr/bin/id -u)-bashrc" >> ~/.bashrc'
-docker exec -u 0 -e PATH="$DEV_PATH" t3-dev sh -c "cat /dev/null" >/dev/null 2>&1 || true
-check "control: the root canaries fire when root runs with dev PATH" 'ls /tmp/canary-0-cat'
-dev 'rm -f /tmp/canary-0-*'
+docker exec -u dev -e PATH="$DEV_PATH" t3-dev sh -c "cat /dev/null" >/dev/null 2>&1 || true
+check "control: the canaries fire for a process that uses dev PATH" 'ls /tmp/canary-1000-cat'
+check_host "root in t3-dev cannot even enter dev's home (no DAC_OVERRIDE, home 0700)" '! docker exec -u 0 t3-dev ls /home/dev >/dev/null 2>&1'
+dev 'rm -f /tmp/canary-1000-*'
 docker exec -u 0 t3-dev /usr/local/bin/t3-dev help >/dev/null 2>&1 || true
 docker exec -u 0 t3-dev /usr/local/bin/t3-dev bogus >/dev/null 2>&1 || true
 docker exec -u 0 -i t3-dev bash -i -c true </dev/null >/dev/null 2>&1 || true
