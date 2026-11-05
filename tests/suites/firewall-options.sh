@@ -14,11 +14,16 @@ restart_with "$image" "FIREWALL_ALLOW=$gateway:18999/tcp"
 wait_ready
 check "allowed port on the host reachable" "curl -fsS -o /dev/null --max-time 10 http://$gateway:18999/"
 check "other ports on the same host stay blocked" "! curl -sS -o /dev/null --max-time 5 http://$gateway:18998/"
-check "rest of the LAN still blocked" '! curl -sS -o /dev/null --max-time 5 http://192.168.1.1/'
+install_rejected_probe
+check "rest of the LAN still rejected by the firewall" 'python3 -I /tmp/rejected.py 192.168.1.1 80'
 restart_with "$image" "FIREWALL_ALLOW=$gateway"
 wait_ready
 check_host "conntrack table was flushed when the rules loaded" 'docker logs t3-dev-net 2>&1 | grep -q "Starší spojení ukončena"'
 check "a whole-host exception opens all its ports" "curl -fsS -o /dev/null --max-time 10 http://$gateway:18998/"
+
+restart_with "$image" "FIREWALL_ALLOW=10.0.0.0/24 192.168.0.0/16:8080/tcp 192.168.1.5:53/udp"
+wait_ready
+check_host "valid exceptions are accepted and turned into exact rules" 'r=$(docker exec t3-dev-net iptables-nft -S OUTPUT); echo "$r" | grep -q -- "-d 10.0.0.0/24 -j ACCEPT" && echo "$r" | grep -q -- "-d 192.168.0.0/16 -p tcp -m tcp --dport 8080 -j ACCEPT" && echo "$r" | grep -q -- "-d 192.168.1.5/32 -p udp -m udp --dport 53 -j ACCEPT"'
 
 for bad in "0.0.0.0/0" "192.168.0.0/8" "192.168.0.0/16" "10.0.0.0/20" "*" "1.2.3.4;rm" "300.1.1.1" "010.0.0.1" "1.2.3.4:0" "1.2.3.4:65536" "1.2.3.4/33" "fd00::1" "198.18.0.1"; do
   restart_with "$image" "FIREWALL_ALLOW=$bad"
@@ -42,6 +47,8 @@ restart_with "$image" "FIREWALL=off" "FIREWALL_EXPECTED=off"
 wait_ready
 check_host "log warns that the firewall is off" 'docker logs t3-dev-net 2>&1 | grep -q "firewall je vypnutý"'
 check "host reachable with the firewall off" "curl -fsS -o /dev/null --max-time 10 http://$gateway:18999/"
+install_rejected_probe
+check "control: with the firewall off the reject probe does not fire" '! python3 -I /tmp/rejected.py 192.168.1.1 80'
 dev "nohup bash -c 'exec 3<>/dev/tcp/$gateway/18997; while sleep 1; do echo ping >&3 2>/dev/null && read -t 3 l <&3 && echo OK >/tmp/conn || { echo BLOCKED >/tmp/conn; exit; }; done' >/dev/null 2>&1 &"
 sleep 4
 check "connection to the host is up before the firewall" 'grep -qx OK /tmp/conn'
@@ -53,7 +60,7 @@ kill "$echo_server"
 section "Fail closed without NET_ADMIN"
 docker compose -f "$compose" down --timeout 60
 write_compose "$image"
-sed -i "s/      - NET_ADMIN/      - CHOWN/" "$compose"
+mutate "s/      - NET_ADMIN/      - CHOWN/"
 docker compose -f "$compose" up -d --quiet-pull || true
 sleep 15
 check_host "t3-dev does not start without a working firewall" '[ "$(docker inspect -f "{{.State.Running}}" t3-dev 2>/dev/null)" != true ] || ! docker exec t3-dev pgrep -x supervisord >/dev/null 2>&1'

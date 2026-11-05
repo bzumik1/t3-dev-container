@@ -12,6 +12,7 @@ check "python3 for scripts" 'python3 --version'
 section "Supply-chain settings"
 check "npm min-release-age 3" '[ "$(npm config get min-release-age)" = 3 ]'
 check "npm ignore-scripts" '[ "$(npm config get ignore-scripts)" = true ]'
+check "control: the same install script runs when allowed" 'd=$(mktemp -d) && cd $d && npm init -y >/dev/null && node -e "const p=require(\"./package.json\");p.scripts={postinstall:\"touch /tmp/allowed\"};require(\"fs\").writeFileSync(\"package.json\",JSON.stringify(p))" && npm install --ignore-scripts=false >/dev/null 2>&1; [ -e /tmp/allowed ]'
 check "npm blocks install scripts" 'd=$(mktemp -d) && cd $d && npm init -y >/dev/null && node -e "const p=require(\"./package.json\");p.scripts={postinstall:\"touch /tmp/pwned\"};require(\"fs\").writeFileSync(\"package.json\",JSON.stringify(p))" && npm install >/dev/null 2>&1; [ ! -e /tmp/pwned ]'
 check "control: npm installs an old version" 'd=$(mktemp -d) && cd $d && npm init -y >/dev/null && npm install typescript@5.4.5 >/dev/null 2>&1'
 check "npm refuses too-fresh versions" 'd=$(mktemp -d) && cd $d && npm init -y >/dev/null && v=$(npm view typescript@next version --min-release-age=0) && ! npm install "typescript@$v" >/dev/null 2>&1'

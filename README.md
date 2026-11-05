@@ -76,18 +76,34 @@ Tajné údaje (tokeny, API klíče) do proměnných nepatří: ZimaOS je ukazuje
 ssh -p 2222 dev@<adresa-zimaos>
 ```
 
-Přihlásit se lze jen klíčem z `github.com/<GITHUB_USER>.keys` nebo z `SSH_AUTHORIZED_KEYS`. Klíče načítá `t3-dev-net` při každém startu do souboru, který `t3-dev` vidí jen pro čtení, takže si žádný proces v kontejneru nemůže přidat vlastní klíč. Klíč smazaný na GitHubu nebo odebraný z `SSH_AUTHORIZED_KEYS` přestane platit po restartu `t3-dev-net`. Uložené klíče se použijí jen při výpadku GitHubu, jen pro stejného uživatele a nejdéle 7 dní. Port 2222 se otevře, jen když existuje aspoň jeden klíč. Pro tento server nepoužívejte `ForwardAgent`. Funguje přesměrování portů z kontejneru k vám, třeba `ssh -p 2222 -L 4200:localhost:4200 dev@...` pro dev server Angularu. Přesměrovat jde jen na `localhost` kontejneru, ne do sítě. Opačný směr (`-R`) je vypnutý.
+Přihlásit se lze jen klíčem z `github.com/<GITHUB_USER>.keys` nebo z `SSH_AUTHORIZED_KEYS`. Klíče načítá `t3-dev-net` při každém startu do souboru, který `t3-dev` vidí jen pro čtení, takže si žádný proces v kontejneru nemůže přidat vlastní klíč. Klíč smazaný na GitHubu nebo odebraný z `SSH_AUTHORIZED_KEYS` přestane platit po restartu `t3-dev-net`. Uložené klíče se použijí jen při výpadku GitHubu, jen pro stejného uživatele a nejdéle 7 dní. Port 2222 se otevře, jen když existuje aspoň jeden klíč. 
+
+Doporučené nastavení klienta (`~/.ssh/config`), s klíčem jen pro tento server:
+
+```text
+Host t3-dev
+  HostName <adresa-zimaos>
+  Port 2222
+  User dev
+  IdentityFile ~/.ssh/t3-dev
+  IdentitiesOnly yes
+  ForwardAgent no
+  PasswordAuthentication no
+  KbdInteractiveAuthentication no
+```
+
+Server se nikdy neptá na heslo. sshd běží jako `dev`, takže kompromitovaný proces v kontejneru by ho mohl nahradit vlastním. Výzva k zadání hesla proto znamená podvržený server. Funguje přesměrování portů z kontejneru k vám, třeba `ssh -p 2222 -L 4200:localhost:4200 dev@...` pro dev server Angularu. Přesměrovat jde jen na `localhost` kontejneru, ne do sítě. Opačný směr (`-R`) je vypnutý.
 
 ## Zabezpečení
 
 Kontejner **není privilegovaný**, nemá přístup k Dockeru hostitele a **za běhu v něm není žádný root**:
 
-- **Bez roota.** `t3-dev` běží celý jako `dev`. Výchozí uživatel image je `dev`, takže i `docker exec` a healthcheck jdou bez roota. Před startem služeb kontejner ověří vlastní sandbox (oprávnění, seccomp, IPv6, firewall) a když něco chybí, nespustí se. V image není `sudo` ani žádný setuid program. `newuidmap`/`newgidmap` mají jen úzké souborové oprávnění (`cap_setuid`, `cap_setgid`) a SSH, T3 ani agenti je díky `no_new_privs` použít nemůžou. Smí je jen Docker démon, který se spouští jen ze systémových cest.
+- **Bez roota.** `t3-dev` běží celý jako `dev`. Výchozí uživatel image je `dev`, takže i `docker exec` a healthcheck jdou bez roota. Před startem služeb kontejner ověří vlastní sandbox (oprávnění, seccomp, IPv6, firewall) a když něco chybí, nespustí se. V image není `sudo` ani žádný setuid program. `newuidmap`/`newgidmap` mají jen úzké souborové oprávnění (`cap_setuid`, `cap_setgid`) a SSH, T3 ani agenti je díky `no_new_privs` použít nemůžou. Smí je jen Docker démon a supervisord, které se spouštějí jen ze systémových cest a bez Python modulů z domovského adresáře.
 - **Rootless Docker.** Démon běží jako `dev` ve vlastním uživatelském jmenném prostoru. Root ve vnořeném kontejneru je navenek `dev`. Kontejnery s `--network host` nevidí loopback `t3-dev` (T3 server).
 - **Vlastní seccomp profil** ([`seccomp.json`](seccomp.json), generuje ho [`scripts/generate-seccomp.mjs`](scripts/generate-seccomp.mjs)): výchozí profil Dockeru plus jen volání pro jmenné prostory a mount. Pořád blokuje `bpf`, `perf_event_open`, moduly jádra, `kexec`, `userfaultfd`, `io_uring` a klíčenku.
 - **Firewall** (`t3-dev-net`): internet je volný. Domácí síť, Docker hostitel, ostatní kontejnery a Tailscale (`10/8`, `172.16/12`, `192.168/16`, `100.64/10`, link-local) jsou blokované, a to i pro vnořené kontejnery. Blokovaná jsou i spojení otevřená ještě před nahráním pravidel. Dovnitř vede jen SSH, a to jen když je zapnuté. IPv6 je vypnuté. `dev` pravidla změnit nemůže. DNS jde přes veřejné resolvery (Quad9), ne přes domácí síť.
 - **Limity:** 8 GB RAM, 10 CPU s nižší prioritou než ostatní aplikace, 4096 procesů, omezené logy. Při nedostatku paměti na hostiteli jádro obětuje nejdřív `t3-dev`.
-- **Ochrana proti zavirovaným balíčkům:** npm neinstaluje skripty balíčků a bere jen verze starší 3 dnů pnpm a uv také. Nastavení je v prostředí, takže ho klonovaný projekt nevypne a nepřesměruje na jiný registr. Projekt ale může cooldown pro konkrétní balíčky výslovně vypnout (`minimumReleaseAgeExclude` v `pnpm-workspace.yaml`, `exclude-newer-package` v `pyproject.toml`). Při review takové řádky hlídejte. Je to bezpečnostní pás, ne sandbox. Platí i při sestavení image.
+- **Ochrana proti zavirovaným balíčkům:** npm neinstaluje skripty balíčků a bere jen verze starší 3 dnů, pnpm a uv také. Nastavení je v prostředí, takže ho klonovaný projekt nevypne a nepřesměruje na jiný registr. Projekt ale může cooldown pro konkrétní balíčky výslovně vypnout (`minimumReleaseAgeExclude` v `pnpm-workspace.yaml`, `exclude-newer-package` v `pyproject.toml`). Při review takové řádky hlídejte. Je to bezpečnostní pás, ne sandbox. Platí i při sestavení image.
 - **T3 Code** poslouchá jen uvnitř kontejneru, ven vede jen tunel T3 Connect.
 
 **Kompromisy, bez kterých Docker uvnitř nejde:** `t3-dev` má vypnutý profil AppArmor a maskování `/proc` (`apparmor=unconfined`, `systempaths=unconfined`) a smí vytvářet uživatelské jmenné prostory. Chyba jádra v těchto oblastech by mohla vést k úniku na hostitele, proto udržujte ZimaOS aktualizovaný. ZimaOS 1.8.0 má jádro 6.18.9 se známými chybami ([IceWhaleTech/ZimaOS#641](https://github.com/IceWhaleTech/ZimaOS/issues/641)). Silnější izolaci dá jen virtuální stroj.
@@ -104,7 +120,7 @@ sudo docker pull ghcr.io/bzumik1/t3-dev-container:latest
 
 a restartem aplikace.
 
-Když nový image potřebuje nový `compose.yml` (proměnná `T3_DEV_COMPOSE`), kontejnery se nespustí a v logu je „compose.yml je zastaralý“. Pak importujte aktuální `compose.yml` a stáhněte `seccomp.json` znovu podle kroku 1 instalace. Agenti se aktualizují sami, ručně `t3-dev update-agents`.
+Když nový image potřebuje nový `compose.yml` (proměnná `T3_DEV_COMPOSE`), kontejnery se nespustí a v logu je „compose.yml je zastaralý“. Pak importujte aktuální `compose.yml` a stáhněte `seccomp.json` znovu podle kroku 1 instalace. Po přechodu z verze 3 můžete smazat nepoužívaný adresář se starými klíči: `sudo rm -rf /DATA/AppData/t3-dev/ssh`. Agenti se aktualizují sami, ručně `t3-dev update-agents`.
 
 ## Pomocník `t3-dev`
 

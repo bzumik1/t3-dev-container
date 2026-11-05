@@ -15,6 +15,7 @@ check "only sshd listens on all interfaces" '[ -z "$(ss -ltnH | awk "{print \$4}
 check_host "t3 port not published on the host" '! curl -fsS -o /dev/null --max-time 5 http://127.0.0.1:3773/'
 check "control: nested containers run" 'docker run --rm alpine true'
 check "nested container cannot reach the t3 server via the host loopback" '! docker run --rm alpine wget -q -O /dev/null -T 5 http://10.0.2.2:3773/'
+check "control: host-network nested containers run" 'docker run --rm --network host alpine true'
 check "host-network nested container cannot reach the t3 server" '! docker run --rm --network host alpine wget -q -O /dev/null -T 5 http://127.0.0.1:3773/'
 check "t3-dev status" 't3-dev status'
 

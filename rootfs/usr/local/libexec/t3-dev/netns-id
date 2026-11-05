@@ -1,0 +1,4 @@
+#!/bin/bash
+# Identity of the current network namespace that the kernel never reuses:
+# boot id + SO_NETNS_COOKIE (inode numbers of namespaces are reused).
+exec /usr/bin/python3 -I -S -c 'import socket; s = socket.socket(); c = int.from_bytes(s.getsockopt(socket.SOL_SOCKET, 71, 8), "little"); print(open("/proc/sys/kernel/random/boot_id").read().strip(), c)'

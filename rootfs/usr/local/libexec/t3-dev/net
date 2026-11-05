@@ -12,6 +12,8 @@ set -euo pipefail
 log() { printf '[t3-dev-net] %s\n' "$*"; }
 
 /usr/local/libexec/t3-dev/compose-version
+# shellcheck source=rootfs/usr/local/libexec/t3-dev/net-lib
+. /usr/local/libexec/t3-dev/net-lib
 
 shared=/etc/t3-dev/shared
 marker="$shared/firewall"
@@ -32,7 +34,7 @@ case "${FIREWALL:-on}" in
     ;;
   *)
     /usr/local/libexec/t3-dev/firewall
-    readlink /proc/self/ns/net > "$marker.new"
+    /usr/local/libexec/t3-dev/netns-id > "$marker.new"
     chmod 0644 "$marker.new"
     mv -f "$marker.new" "$marker"
     ;;
@@ -45,20 +47,21 @@ if [ -n "$github_user" ]; then
   fi
   fetched="$shared/.github.new"
   status=0
-  curl -fsSL --max-time 20 --proto '=https' "https://github.com/${github_user}.keys" -o "$fetched" || status=$?
-  if [ "$status" = 0 ]; then
+  code=$(curl -sSL --max-time 20 --max-filesize 1048576 --proto '=https' -o "$fetched" -w '%{http_code}' "https://github.com/${github_user}.keys") || status=$?
+  outcome=$(classify_fetch "$status" "${code:-000}")
+  if [ "$outcome" = keys ]; then
     { echo "# github=$github_user fetched=$(date +%s)"; grep -E "$key_pattern" "$fetched" || true; } > "$github_file"
     log "SSH: načteno $(grep -cvE '^#' "$github_file") klíčů uživatele $github_user z GitHubu."
-  elif [ "$status" = 22 ]; then
+  elif [ "$outcome" = none ]; then
     : > "$github_file"
-    log "SSH: GitHub nezná uživatele $github_user nebo nemá klíče (HTTP chyba), jeho klíče nepoužívám."
+    log "SSH: GitHub nezná uživatele $github_user (HTTP 404), jeho klíče nepoužívám."
   else
     header=$(head -1 "$github_file" 2>/dev/null || true)
     fetched_at="${header##*fetched=}"
     age=999999999
     if [[ "$fetched_at" =~ ^[0-9]+$ ]]; then age=$(( $(date +%s) - fetched_at )); fi
     if [[ "$header" == "# github=$github_user fetched="* ]] && [ "$age" -lt 604800 ]; then
-      log "SSH: GitHub je nedostupný, používám klíče $github_user staré $((age / 3600)) h."
+      log "SSH: GitHub je nedostupný (HTTP ${code:-000}), používám klíče $github_user staré $((age / 3600)) h."
     else
       : > "$github_file"
       log "SSH: GitHub je nedostupný a uložené klíče nepatří $github_user nebo jsou starší 7 dní, nepoužívám je."

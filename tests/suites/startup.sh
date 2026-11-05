@@ -23,7 +23,9 @@ sudo chown -R 1000:1000 "$work/home"
 # t3-dev must still wait, because only the namespace record proves the firewall.
 sudo iptables -I DOCKER-USER -d 198.18.255.254 -j REJECT --reject-with icmp-admin-prohibited
 docker compose -f "$compose" up -d --quiet-pull || true
-sleep 20
+check_host "control: the REJECT rule is in DOCKER-USER" 'sudo iptables -C DOCKER-USER -d 198.18.255.254 -j REJECT --reject-with icmp-admin-prohibited'
+check_host "control: an ordinary container gets host unreachable for the probe address" "docker run --rm --network t3-dev_default --entrypoint python3 $image -I -S -c 'import errno, socket, sys; s = socket.socket(); s.settimeout(3); sys.exit(0 if s.connect_ex((\"198.18.255.254\", 9)) == errno.EHOSTUNREACH else 1)'"
+sleep 15
 check_host "no service starts while the firewall is missing" '! docker exec t3-dev pgrep -x supervisord >/dev/null 2>&1'
 check_host "services are held back: no verified-sandbox message yet" '! docker logs t3-dev 2>&1 | grep -q "Sandbox ověřen"'
 sleep 40
