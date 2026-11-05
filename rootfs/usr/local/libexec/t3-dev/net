@@ -1,22 +1,30 @@
 #!/bin/bash
 # Entry point of t3-dev-net (root, only CAP_NET_ADMIN, read-only): applies the
-# firewall, writes the SSH keys t3-dev may accept into a root-owned volume that
-# t3-dev mounts read-only, marks itself ready, then only holds the network
-# namespace that t3-dev joins.
+# firewall, then records the network namespace it protects in a root-owned
+# volume that t3-dev mounts read-only (t3-dev starts only when that record
+# matches its own namespace). Then it writes the SSH keys t3-dev may accept
+# into the same volume, opens TCP 2222 only if there are keys, and holds the
+# network namespace.
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 unset BASH_ENV ENV CDPATH
 set -euo pipefail
 
 log() { printf '[t3-dev-net] %s\n' "$*"; }
 
-keys_dir=/etc/t3-dev/ssh
-keys_file="$keys_dir/authorized_keys"
-github_user="${GITHUB_USER:-}"
-manual_keys="${SSH_AUTHORIZED_KEYS:-}"
+/usr/local/libexec/t3-dev/compose-version
 
-ssh_enabled=0
-if [ -n "$github_user" ] || [ -n "$manual_keys" ]; then ssh_enabled=1; fi
-export SSH_ENABLED="$ssh_enabled"
+shared=/etc/t3-dev/shared
+marker="$shared/firewall"
+keys_file="$shared/authorized_keys"
+github_file="$shared/authorized_keys.github"
+key_pattern='^(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp(256|384|521)|sk-ssh-ed25519@openssh\.com|sk-ecdsa-sha2-nistp256@openssh\.com) '
+github_user="${GITHUB_USER:-}"
+
+if [ ! -d "$shared" ] || [ ! -w "$shared" ]; then
+  log "CHYBA: chybí svazek $shared (compose.yml)."
+  exit 1
+fi
+rm -f "$marker"
 
 case "${FIREWALL:-on}" in
   off|false|0)
@@ -24,36 +32,58 @@ case "${FIREWALL:-on}" in
     ;;
   *)
     /usr/local/libexec/t3-dev/firewall
+    readlink /proc/self/ns/net > "$marker.new"
+    chmod 0644 "$marker.new"
+    mv -f "$marker.new" "$marker"
     ;;
 esac
 
-if [ -d "$keys_dir" ] && [ -w "$keys_dir" ]; then
-  tmp="$keys_dir/.authorized_keys.new"
-  : > "$tmp"
-  if [ -n "$github_user" ]; then
-    if [[ ! "$github_user" =~ ^[A-Za-z0-9-]{1,39}$ ]]; then
-      log "CHYBA: GITHUB_USER '$github_user' není platné jméno účtu GitHub."
-      exit 1
-    fi
-    if curl -fsSL --max-time 20 --proto '=https' "https://github.com/${github_user}.keys" -o "$tmp.github" \
-      && grep -E '^(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp(256|384|521)|sk-ssh-ed25519@openssh.com|sk-ecdsa-sha2-nistp256@openssh.com) ' "$tmp.github" >> "$tmp"; then
-      log "SSH: načteno $(grep -c . "$tmp") klíčů uživatele $github_user z GitHubu."
-    elif [ -s "$keys_file" ]; then
-      log "SSH: klíče z GitHubu se nepodařilo stáhnout, ponechávám dříve uložené."
-      cp "$keys_file" "$tmp"
+if [ -n "$github_user" ]; then
+  if [[ ! "$github_user" =~ ^[A-Za-z0-9]([A-Za-z0-9-]{0,38})$ ]]; then
+    log "CHYBA: GITHUB_USER '$github_user' není platné jméno účtu GitHub."
+    exit 1
+  fi
+  fetched="$shared/.github.new"
+  status=0
+  curl -fsSL --max-time 20 --proto '=https' "https://github.com/${github_user}.keys" -o "$fetched" || status=$?
+  if [ "$status" = 0 ]; then
+    { echo "# github=$github_user fetched=$(date +%s)"; grep -E "$key_pattern" "$fetched" || true; } > "$github_file"
+    log "SSH: načteno $(grep -cvE '^#' "$github_file") klíčů uživatele $github_user z GitHubu."
+  elif [ "$status" = 22 ]; then
+    : > "$github_file"
+    log "SSH: GitHub nezná uživatele $github_user nebo nemá klíče (HTTP chyba), jeho klíče nepoužívám."
+  else
+    header=$(head -1 "$github_file" 2>/dev/null || true)
+    fetched_at="${header##*fetched=}"
+    age=999999999
+    if [[ "$fetched_at" =~ ^[0-9]+$ ]]; then age=$(( $(date +%s) - fetched_at )); fi
+    if [[ "$header" == "# github=$github_user fetched="* ]] && [ "$age" -lt 604800 ]; then
+      log "SSH: GitHub je nedostupný, používám klíče $github_user staré $((age / 3600)) h."
     else
-      log "SSH: klíče z GitHubu se nepodařilo stáhnout."
+      : > "$github_file"
+      log "SSH: GitHub je nedostupný a uložené klíče nepatří $github_user nebo jsou starší 7 dní, nepoužívám je."
     fi
-    rm -f "$tmp.github"
   fi
-  if [ -n "$manual_keys" ]; then
-    printf '%s\n' "$manual_keys" | grep -E '^(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp(256|384|521)|sk-ssh-ed25519@openssh.com|sk-ecdsa-sha2-nistp256@openssh.com) ' >> "$tmp" || true
+  rm -f "$fetched"
+else
+  : > "$github_file"
+fi
+chmod 0644 "$github_file"
+
+{
+  grep -E "$key_pattern" "$github_file" || true
+  printf '%s\n' "${SSH_AUTHORIZED_KEYS:-}" | grep -E "$key_pattern" || true
+} | sort -u > "$keys_file.new"
+chmod 0644 "$keys_file.new"
+mv -f "$keys_file.new" "$keys_file"
+
+if [ -s "$keys_file" ]; then
+  if [ -e "$marker" ]; then
+    iptables-nft -w -I INPUT 1 -p tcp --dport 2222 -j ACCEPT
   fi
-  chmod 0644 "$tmp"
-  mv -f "$tmp" "$keys_file"
-  if [ "$ssh_enabled" = 0 ]; then
-    log "SSH je vypnuté (nastavte GITHUB_USER u t3-dev-net)."
-  fi
+  log "SSH zapnuté: $(grep -c . "$keys_file") povolených klíčů, port 2222 otevřený."
+else
+  log "SSH je vypnuté: žádný klíč (nastavte GITHUB_USER nebo SSH_AUTHORIZED_KEYS u t3-dev-net)."
 fi
 
 touch /run/t3-dev-net-ready

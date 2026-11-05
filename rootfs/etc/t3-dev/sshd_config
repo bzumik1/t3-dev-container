@@ -6,7 +6,7 @@ PidFile /run/user/1000/sshd.pid
 AllowUsers dev
 PermitRootLogin no
 PubkeyAuthentication yes
-AuthorizedKeysFile /etc/t3-dev/ssh/authorized_keys
+AuthorizedKeysFile /etc/t3-dev/shared/authorized_keys
 PasswordAuthentication no
 KbdInteractiveAuthentication no
 PermitEmptyPasswords no

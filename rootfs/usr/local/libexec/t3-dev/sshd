@@ -1,6 +1,6 @@
 #!/bin/bash
 # SSH server of the dev user on port 2222, key-only. The accepted keys come
-# from /etc/t3-dev/ssh/authorized_keys, which t3-dev-net writes (from
+# from /etc/t3-dev/shared/authorized_keys, which t3-dev-net writes (from
 # GITHUB_USER and SSH_AUTHORIZED_KEYS) and t3-dev mounts read-only, so no
 # process in t3-dev can add a key.
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
@@ -8,10 +8,10 @@ set -euo pipefail
 
 log() { printf '[t3-dev] %s\n' "$*"; }
 
-keys=/etc/t3-dev/ssh/authorized_keys
+keys=/etc/t3-dev/shared/authorized_keys
 if [ ! -s "$keys" ]; then
-  log "SSH je vypnuté: žádný klíč (nastavte GITHUB_USER u t3-dev-net)."
-  exec sleep infinity
+  log "SSH je vypnuté: žádný klíč (nastavte GITHUB_USER nebo SSH_AUTHORIZED_KEYS u t3-dev-net)."
+  until [ -s "$keys" ]; do sleep 10; done
 fi
 
 host_dir="$HOME/.ssh/host-keys"

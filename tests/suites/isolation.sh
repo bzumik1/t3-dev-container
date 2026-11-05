@@ -41,6 +41,7 @@ docker exec -u 0 t3-dev /usr/local/bin/t3-dev help >/dev/null 2>&1 || true
 docker exec -u 0 t3-dev /usr/local/bin/t3-dev bogus >/dev/null 2>&1 || true
 docker exec -u 0 -i t3-dev bash -i -c true </dev/null >/dev/null 2>&1 || true
 docker exec -u 0 t3-dev git --version >/dev/null 2>&1 || true
+docker exec -u 0 -e HOME=/home/dev -e PATH="$DEV_PATH" -i t3-dev bash -i -c true </dev/null >/dev/null 2>&1 || true
 check "no root context ran code from dev's home" '! ls /tmp/canary-0-* 2>/dev/null'
 check "dockerd and supervisord run with a system PATH" 'for p in $(pgrep -x dockerd) $(pgrep -x supervisord); do tr "\0" "\n" < /proc/$p/environ | grep -qx "PATH=/usr/sbin:/usr/bin:/sbin:/bin" || { echo "pid $p"; tr "\0" "\n" < /proc/$p/environ | grep ^PATH; exit 1; }; done'
 check "supervisord does not start dockerd-rootless.sh from ~/.local/bin" '
@@ -49,11 +50,20 @@ check "supervisord does not start dockerd-rootless.sh from ~/.local/bin" '
   for i in $(seq 60); do docker info >/dev/null 2>&1 && break; sleep 2; done; rm -f ~/.local/bin/dockerd-rootless.sh; [ ! -e /tmp/canary-dockerd ]'
 dev 'for c in cat sed grep git ls id awk printf; do rm -f ~/.local/bin/$c; done; sed -i "/canary/d" ~/.bashrc'
 
+section "Healthcheck runs with no_new_privs and a system PATH (P2)"
+check_host "healthcheck goes through setpriv --no-new-privs" 'docker inspect -f "{{json .Config.Healthcheck.Test}}" t3-dev | grep -q "no-new-privs"'
+dev 'printf "#!/bin/sh\n/usr/bin/grep -q \"^NoNewPrivs:[[:space:]]*0\" /proc/self/status && echo \$PPID >> /tmp/canary-nonnp\necho ran >> /tmp/canary-hc\nexec /usr/bin/grep \"\$@\"\n" > ~/.local/bin/grep && chmod +x ~/.local/bin/grep && rm -f /tmp/canary-nonnp /tmp/canary-hc'
+sleep 70
+check "nothing from ~/.local/bin ran without no_new_privs (healthcheck)" '[ ! -s /tmp/canary-nonnp ]'
+check "control: the planted grep runs for dev" '"$HOME"/.local/bin/grep -q x <<<x && [ -e /tmp/canary-hc ]'
+dev 'rm -f ~/.local/bin/grep /tmp/canary-hc /tmp/canary-nonnp'
+
 section "Home and runtime settings (H6, R2-R4)"
-check "home is private (0700)" '[ "$(stat -c %a ~)" = 700 ]'
+check "home and workspace are private (0700)" '[ "$(stat -c %a ~)" = 700 ] && [ "$(stat -c %a /workspace)" = 700 ]'
 check_host "log driver, OOM priority and CPU shares of t3-dev" 'v=$(docker inspect -f "{{.HostConfig.LogConfig.Type}} {{index .HostConfig.LogConfig.Config \"max-size\"}} {{.HostConfig.OomScoreAdj}} {{.HostConfig.CPUShares}}" t3-dev); echo "$v"; [ "$v" = "local 10m 800 256" ]'
 check_host "t3-dev-net and t3-dev-init have small local logs" 'for c in t3-dev-net t3-dev-init; do v=$(docker inspect -f "{{.HostConfig.LogConfig.Type}} {{index .HostConfig.LogConfig.Config \"max-size\"}}" $c); [ "$v" = "local 1m" ] || { echo "$c: $v"; exit 1; }; done'
 check "dev cannot lower its OOM priority" '[ "$(cat /proc/1/oom_score_adj)" = 800 ] && ! sh -c "echo 0 > /proc/self/oom_score_adj" 2>/dev/null'
 check "dev cannot change the firewall even as root of its own user namespace" '! unshare -Ur iptables-nft -F OUTPUT 2>/dev/null'
 check_host "the namespace firewall is untouched after that" 'docker exec t3-dev-net iptables-nft -S OUTPUT | grep -q "192.168.0.0/16.*REJECT"'
+check "outgoing ports stay clear of the nested Docker port range" 'read -r low high < /proc/sys/net/ipv4/ip_local_port_range; echo "$low $high"; [ "$low $high" = "61000 65535" ]'
 check "IPv6 is off and dev cannot turn it on" '[ "$(cat /proc/sys/net/ipv6/conf/all/disable_ipv6)" = 1 ] && ! sh -c "echo 0 > /proc/sys/net/ipv6/conf/all/disable_ipv6" 2>/dev/null'

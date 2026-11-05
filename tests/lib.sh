@@ -11,11 +11,16 @@ compose="$work/compose.yml"
 failures=0
 
 pass() { printf '\033[32m✓ %s\033[0m\n' "$*"; }
+skips=0
+skip() { printf '\033[33m- %s (skipped)\033[0m\n' "$*"; skips=$((skips + 1)); }
 fail() { printf '\033[31m✗ %s\033[0m\n' "$*"; failures=$((failures + 1)); }
 section() { printf '\n== %s\n' "$*"; }
 DEV_PATH=/home/dev/.local/bin:/home/dev/.opencode/bin:/home/dev/.local/share/mise/shims:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 dev() { docker exec -u dev -e PATH="$DEV_PATH" -w /workspace t3-dev bash -c "$*"; }
-as_root() { docker exec -u 0 t3-dev bash -c "$*"; }
+# put_file <path>: write stdin to a file inside t3-dev as dev and fail loudly if it ends up empty.
+put_file() {
+  if ! docker exec -i -u dev t3-dev bash -c "cat > $1" || ! dev "[ -s $1 ]"; then fail "could not write $1 into the container"; fi
+}
 
 check() {
   local name="$1"; shift
@@ -61,6 +66,13 @@ write_compose() {
   done
 }
 
+# mutate <sed expression>: edit the test compose.yml and fail loudly if nothing changed.
+mutate() {
+  cp "$compose" "$compose.orig"
+  sed -i "$1" "$compose"
+  if cmp -s "$compose" "$compose.orig"; then fail "compose mutation had no effect: $1"; fi
+}
+
 # start <image> [KEY=VALUE ...]: fresh volumes, container up.
 start() {
   if [ -f "$compose" ]; then docker compose -f "$compose" down --volumes --timeout 30 >/dev/null 2>&1 || true; fi
@@ -96,5 +108,5 @@ finish() {
     echo "$failures check(s) failed"
     exit 1
   fi
-  echo "All checks passed"
+  echo "All checks passed${skips:+ ($skips skipped)}"
 }

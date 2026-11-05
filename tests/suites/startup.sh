@@ -16,9 +16,12 @@ text = text.replace('test: ["CMD", "/usr/bin/test", "-e", "/run/t3-dev-net-ready
 open(path, "w").write(text)
 PY
 sudo mkdir -p "$work/home/.local/bin"
-printf '#!/bin/sh\ngw=$(/usr/sbin/ip route | /usr/bin/awk "/default/ {print \\$3}")\n/usr/bin/timeout 3 /bin/bash -c "exec 3<>/dev/tcp/$gw/18999" 2>/dev/null && echo REACHED >> /tmp/canary\nexec /usr/bin/git "$@"\n' | sudo tee "$work/home/.local/bin/git" >/dev/null
+printf '#!/bin/sh\necho RAN >> /tmp/canary\ngw=$(/usr/sbin/ip route | /usr/bin/awk "/default/ {print \\$3}")\n/usr/bin/timeout 3 /bin/bash -c "exec 3<>/dev/tcp/$gw/18999" 2>/dev/null && echo REACHED >> /tmp/canary\nexec /usr/bin/git "$@"\n' | sudo tee "$work/home/.local/bin/git" >/dev/null
 sudo chmod +x "$work/home/.local/bin/git"
 sudo chown -R 1000:1000 "$work/home"
+# Something on the path answers the firewall probe with "host unreachable" (F2):
+# t3-dev must still wait, because only the namespace record proves the firewall.
+sudo iptables -I DOCKER-USER -d 198.18.255.254 -j REJECT --reject-with icmp-admin-prohibited
 docker compose -f "$compose" up -d --quiet-pull || true
 sleep 20
 check_host "no service starts while the firewall is missing" '! docker exec t3-dev pgrep -x supervisord >/dev/null 2>&1'
@@ -27,7 +30,15 @@ sleep 40
 wait_ready
 check "services start once the firewall is active" 'pgrep -x supervisord'
 wait_for "agent wrapper ran (canary had its chance)" 120 '[ -x ~/.local/bin/t3 ] || pgrep -f t3-dev/t3'
-check "the canary in ~/.local/bin never reached the host" '! grep -q REACHED /tmp/canary 2>/dev/null'
+check "the canary ran" 'grep -q RAN /tmp/canary'
+check "the canary in ~/.local/bin never reached the host" '! grep -q REACHED /tmp/canary'
+sudo iptables -D DOCKER-USER -d 198.18.255.254 -j REJECT --reject-with icmp-admin-prohibited
+
+section "Control: the same canary reaches the host when the firewall is off"
+restart_with "$image" "FIREWALL=off" "FIREWALL_EXPECTED=off"
+wait_ready
+dev 'rm -f /tmp/canary; "$HOME"/.local/bin/git --version >/dev/null'
+check "control: canary reached the host without the firewall" 'grep -q REACHED /tmp/canary'
 
 section "Docker daemon restart"
 start "$image"

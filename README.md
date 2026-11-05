@@ -20,6 +20,7 @@ Postavené pro ZimaOS, ale funguje na libovolném Linuxu s Dockerem.
    ```bash
    sudo mkdir -p /DATA/AppData/t3-dev
    sudo curl -fsSL -o /DATA/AppData/t3-dev/seccomp.json https://raw.githubusercontent.com/bzumik1/t3-dev-container/main/seccomp.json
+   echo "f9300ccf2722f9c3b456d3fbbca16e4595f1b7c4717ae1fcf5506c781c78a6f1  /DATA/AppData/t3-dev/seccomp.json" | sha256sum -c -
    ```
 
 2. **Nainstalujte aplikaci:** v ZimaOS App Store → **Custom Install** → import, vložte obsah [`compose.yml`](compose.yml). U služby `t3-dev` vyplňte `SERVER_NAME` (např. `HP Prodesk`), u služby `t3-dev-net` `GITHUB_USER`, pokud chcete SSH. Nic jiného měnit nemusíte.
@@ -55,7 +56,7 @@ Všechny proměnné jsou nepovinné.
 | `GITHUB_USER` | `t3-dev-net` | prázdné | Čí veřejné klíče z GitHubu smí přes SSH. Prázdné = SSH vypnuté |
 | `SSH_AUTHORIZED_KEYS` | `t3-dev-net` | prázdné | Další veřejné SSH klíče, jeden na řádek |
 | `FIREWALL` | `t3-dev-net` | `on` | `off` vypne blokování domácí sítě (nedoporučeno) |
-| `FIREWALL_ALLOW` | `t3-dev-net` | prázdné | Výjimky z firewallu, např. `192.168.1.50:8080/tcp 10.0.5.0/24`. Nejvýš rozsah /16. |
+| `FIREWALL_ALLOW` | `t3-dev-net` | prázdné | Výjimky z firewallu, např. `192.168.1.50:8080/tcp 10.0.5.0/24`. Bez portu nejvýš rozsah /24, s portem /16. |
 | `FIREWALL_EXPECTED` | `t3-dev` | `on` | Při `FIREWALL=off` nastavte také na `off`, jinak `t3-dev` čeká na firewall a nespustí se. |
 
 Tajné údaje (tokeny, API klíče) do proměnných nepatří: ZimaOS je ukazuje v UI a vidí je `docker inspect`. Přihlášení agentů se ukládá do svazku `home`.
@@ -66,7 +67,8 @@ Tajné údaje (tokeny, API klíče) do proměnných nepatří: ZimaOS je ukazuje
 |---|---|---|
 | `/DATA/AppData/t3-dev/home` | `/home/dev` | Domovský adresář: přihlášení, agenti, nastavení, cache. Zálohovat. |
 | `/DATA/AppData/t3-dev/workspace` | `/workspace` | Projekty. Zálohovat. |
-| `/DATA/AppData/t3-dev/docker` | `/home/dev/.local/share/docker` | Data Dockeru uvnitř (image, kontejnery). Nezálohovat, při zálohování zachovat číselné vlastníky (100000+). Jednou denně se čistí stará cache a nepoužité image. |
+| `/DATA/AppData/t3-dev/docker` | `/var/lib/t3-dev/docker` | Data Dockeru uvnitř (image, kontejnery). Nezálohovat, při zálohování zachovat číselné vlastníky (100000+). Jednou denně se čistí stará cache a nepoužité image. |
+| `/DATA/AppData/t3-dev/shared` | `/etc/t3-dev/shared` | Povolené SSH klíče a značka firewallu. Zapisuje jen `t3-dev-net` (root), `t3-dev` ho vidí jen pro čtení. |
 
 ## SSH
 
@@ -74,7 +76,7 @@ Tajné údaje (tokeny, API klíče) do proměnných nepatří: ZimaOS je ukazuje
 ssh -p 2222 dev@<adresa-zimaos>
 ```
 
-Přihlásit se lze jen klíčem z `github.com/<GITHUB_USER>.keys` nebo z `SSH_AUTHORIZED_KEYS`. Klíče načítá `t3-dev-net` při každém startu do souboru, který `t3-dev` vidí jen pro čtení, takže si žádný proces v kontejneru nemůže přidat vlastní klíč. Když SSH vypnuté je, firewall na port 2222 nic nepustí. Funguje přesměrování portů z kontejneru k vám, třeba `ssh -p 2222 -L 4200:localhost:4200 dev@...` pro dev server Angularu. Přesměrovat jde jen na `localhost` kontejneru, ne do sítě. Opačný směr (`-R`) je vypnutý.
+Přihlásit se lze jen klíčem z `github.com/<GITHUB_USER>.keys` nebo z `SSH_AUTHORIZED_KEYS`. Klíče načítá `t3-dev-net` při každém startu do souboru, který `t3-dev` vidí jen pro čtení, takže si žádný proces v kontejneru nemůže přidat vlastní klíč. Klíč smazaný na GitHubu nebo odebraný z `SSH_AUTHORIZED_KEYS` přestane platit po restartu `t3-dev-net`. Uložené klíče se použijí jen při výpadku GitHubu, jen pro stejného uživatele a nejdéle 7 dní. Port 2222 se otevře, jen když existuje aspoň jeden klíč. Pro tento server nepoužívejte `ForwardAgent`. Funguje přesměrování portů z kontejneru k vám, třeba `ssh -p 2222 -L 4200:localhost:4200 dev@...` pro dev server Angularu. Přesměrovat jde jen na `localhost` kontejneru, ne do sítě. Opačný směr (`-R`) je vypnutý.
 
 ## Zabezpečení
 
@@ -85,7 +87,7 @@ Kontejner **není privilegovaný**, nemá přístup k Dockeru hostitele a **za b
 - **Vlastní seccomp profil** ([`seccomp.json`](seccomp.json), generuje ho [`scripts/generate-seccomp.mjs`](scripts/generate-seccomp.mjs)): výchozí profil Dockeru plus jen volání pro jmenné prostory a mount. Pořád blokuje `bpf`, `perf_event_open`, moduly jádra, `kexec`, `userfaultfd`, `io_uring` a klíčenku.
 - **Firewall** (`t3-dev-net`): internet je volný. Domácí síť, Docker hostitel, ostatní kontejnery a Tailscale (`10/8`, `172.16/12`, `192.168/16`, `100.64/10`, link-local) jsou blokované, a to i pro vnořené kontejnery. Blokovaná jsou i spojení otevřená ještě před nahráním pravidel. Dovnitř vede jen SSH, a to jen když je zapnuté. IPv6 je vypnuté. `dev` pravidla změnit nemůže. DNS jde přes veřejné resolvery (Quad9), ne přes domácí síť.
 - **Limity:** 8 GB RAM, 10 CPU s nižší prioritou než ostatní aplikace, 4096 procesů, omezené logy. Při nedostatku paměti na hostiteli jádro obětuje nejdřív `t3-dev`.
-- **Ochrana proti zavirovaným balíčkům:** npm neinstaluje skripty balíčků a bere jen verze starší 3 dnů pnpm a uv také. Všechno je nastavené v prostředí, takže to konfigurace klonovaného projektu nevypne. Platí i při sestavení image.
+- **Ochrana proti zavirovaným balíčkům:** npm neinstaluje skripty balíčků a bere jen verze starší 3 dnů pnpm a uv také. Nastavení je v prostředí, takže ho klonovaný projekt nevypne a nepřesměruje na jiný registr. Projekt ale může cooldown pro konkrétní balíčky výslovně vypnout (`minimumReleaseAgeExclude` v `pnpm-workspace.yaml`, `exclude-newer-package` v `pyproject.toml`). Při review takové řádky hlídejte. Je to bezpečnostní pás, ne sandbox. Platí i při sestavení image.
 - **T3 Code** poslouchá jen uvnitř kontejneru, ven vede jen tunel T3 Connect.
 
 **Kompromisy, bez kterých Docker uvnitř nejde:** `t3-dev` má vypnutý profil AppArmor a maskování `/proc` (`apparmor=unconfined`, `systempaths=unconfined`) a smí vytvářet uživatelské jmenné prostory. Chyba jádra v těchto oblastech by mohla vést k úniku na hostitele, proto udržujte ZimaOS aktualizovaný. ZimaOS 1.8.0 má jádro 6.18.9 se známými chybami ([IceWhaleTech/ZimaOS#641](https://github.com/IceWhaleTech/ZimaOS/issues/641)). Silnější izolaci dá jen virtuální stroj.
@@ -100,7 +102,9 @@ Image se každý týden přestaví s bezpečnostními aktualizacemi (`ghcr.io/bz
 sudo docker pull ghcr.io/bzumik1/t3-dev-container:latest
 ```
 
-a restartem aplikace. Agenti se aktualizují sami, ručně `t3-dev update-agents`.
+a restartem aplikace.
+
+Když nový image potřebuje nový `compose.yml` (proměnná `T3_DEV_COMPOSE`), kontejnery se nespustí a v logu je „compose.yml je zastaralý“. Pak importujte aktuální `compose.yml` a stáhněte `seccomp.json` znovu podle kroku 1 instalace. Agenti se aktualizují sami, ručně `t3-dev update-agents`.
 
 ## Pomocník `t3-dev`
 
@@ -112,7 +116,7 @@ t3-dev connect          znovu spustí přihlášení k T3 Connect
 t3-dev restart <služba> restartuje dockerd, sshd nebo t3
 ```
 
-Z hostitele: `sudo docker exec -it t3-dev zsh`.
+Z hostitele: `sudo docker exec -it t3-dev setpriv --no-new-privs zsh -l`.
 
 **Nepoužívejte `docker exec -u 0` ani `docker cp` do `t3-dev`.** Kvůli vypnutým maskám `/proc` (nutné pro Docker uvnitř) by root v tomto kontejneru mohl měnit nastavení jádra hostitele. `docker cp` má na Dockeru 27 chybu CVE-2026-42306.
 
@@ -126,4 +130,4 @@ Z hostitele: `sudo docker exec -it t3-dev zsh`.
 
 ## Vývoj
 
-Změny přes PR. CI sestaví image a ve 22 souběžných jobech ho spustí se stejnými volbami jako `compose.yml`: izolace a oprávnění, Docker uvnitř, firewall, SSH, seccomp, limity, nástroje, Testcontainers v Javě i Node, agenti, restart a aktualizace, Docker 27.5.1 jako na ZimaOS a skutečný projekt (backend, frontend, e2e a celý stack). Pak image proskenuje Trivy a z `main` ho publikuje do ghcr.io s atestací původu.
+Změny přes PR. CI sestaví image a v desítkách souběžných jobů ho spustí se stejnými volbami jako `compose.yml`: izolace a oprávnění, Docker uvnitř, firewall, SSH, seccomp, limity, nástroje, Testcontainers v Javě i Node, agenti, restart a aktualizace, Docker 27.5.1 jako na ZimaOS a skutečný projekt (backend, frontend, e2e a celý stack). Pak image proskenuje Trivy a z `main` ho publikuje do ghcr.io s atestací původu.
