@@ -1,0 +1,12 @@
+# shellcheck shell=bash
+# classify_fetch <curl exit status> <HTTP code>: what a GitHub keys download means.
+#   keys  - 200, use the downloaded keys
+#   none  - 404, the account does not exist: no GitHub keys (revocation)
+#   cache - anything else (network error, 429, 5xx): GitHub unavailable
+classify_fetch() {
+  local status="$1" code="$2"
+  if [ "$status" = 0 ] && [ "$code" = 200 ]; then echo keys
+  elif [ "$code" = 404 ]; then echo none
+  else echo cache
+  fi
+}

@@ -1,0 +1,7 @@
+#!/usr/bin/python3 -I
+# supervisord isolated from dev's home: no user site-packages, .pth files,
+# usercustomize or PYTHON* variables. It runs without no_new_privs (parent of
+# dockerd, which needs newuidmap), so it must not load code dev can write.
+import sys
+from supervisor.supervisord import main
+sys.exit(main())

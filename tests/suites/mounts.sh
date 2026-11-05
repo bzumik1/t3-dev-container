@@ -23,4 +23,11 @@ docker exec -i t3-dev sh -c 'cat >> /etc/t3-dev/shared/authorized_keys' < "$othe
 check_host "a key dev tried to plant does not log in" "! ssh -p 2222 -i $other -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -o ConnectTimeout=10 dev@127.0.0.1 true"
 check_host "control: the configured key still logs in" "ssh -p 2222 -i $key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -o ConnectTimeout=10 dev@127.0.0.1 true"
 
+dev 'cp /usr/bin/true ~/suid-test && chmod u+s ~/suid-test'
+if findmnt -no OPTIONS --target "$work/home" | grep -qw nosuid; then
+  pass "home volume is nosuid"
+else
+  skip "volumes are not nosuid,nodev (needs pre-created host dirs; owner decision H6)"
+fi
+dev 'rm -f ~/suid-test'
 check_host "no setuid or setgid files anywhere in the volumes" '[ -z "$(sudo find "$work/home" "$work/workspace" "$work/shared" -perm /6000 -print -quit)" ]'

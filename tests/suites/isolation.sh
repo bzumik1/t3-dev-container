@@ -37,6 +37,9 @@ check_host "image has no PATH or HOME pointing into /home/dev" '! docker image i
 check_host "root exec gets HOME=/root, dev gets /home/dev" '[ "$(docker exec -u 0 t3-dev printenv HOME)" = /root ] && [ "$(docker exec t3-dev printenv HOME)" = /home/dev ]'
 check_host "t3-dev-net has no HOME in the home volume" '! docker inspect -f "{{range .Config.Env}}{{println .}}{{end}}" t3-dev-net | grep -q "^HOME=/home/dev"'
 dev 'mkdir -p ~/.local/bin && for c in cat sed grep git ls id awk printf; do printf "#!/bin/sh\ntouch /tmp/canary-\$(/usr/bin/id -u)-%s\nexec /usr/bin/%s \"\$@\"\n" $c $c > ~/.local/bin/$c; chmod +x ~/.local/bin/$c; done; echo "touch /tmp/canary-\$(/usr/bin/id -u)-bashrc" >> ~/.bashrc'
+docker exec -u 0 -e PATH="$DEV_PATH" t3-dev sh -c "cat /dev/null" >/dev/null 2>&1 || true
+check "control: the root canaries fire when root runs with dev PATH" 'ls /tmp/canary-0-cat'
+dev 'rm -f /tmp/canary-0-*'
 docker exec -u 0 t3-dev /usr/local/bin/t3-dev help >/dev/null 2>&1 || true
 docker exec -u 0 t3-dev /usr/local/bin/t3-dev bogus >/dev/null 2>&1 || true
 docker exec -u 0 -i t3-dev bash -i -c true </dev/null >/dev/null 2>&1 || true
@@ -54,9 +57,23 @@ section "Healthcheck runs with no_new_privs and a system PATH (P2)"
 check_host "healthcheck goes through setpriv --no-new-privs" 'docker inspect -f "{{json .Config.Healthcheck.Test}}" t3-dev | grep -q "no-new-privs"'
 dev 'printf "#!/bin/sh\n/usr/bin/grep -q \"^NoNewPrivs:[[:space:]]*0\" /proc/self/status && echo \$PPID >> /tmp/canary-nonnp\necho ran >> /tmp/canary-hc\nexec /usr/bin/grep \"\$@\"\n" > ~/.local/bin/grep && chmod +x ~/.local/bin/grep && rm -f /tmp/canary-nonnp /tmp/canary-hc'
 sleep 70
+check_host "control: the healthcheck ran meanwhile" '[ "$(docker inspect -f "{{len .State.Health.Log}}" t3-dev)" -ge 1 ]'
 check "nothing from ~/.local/bin ran without no_new_privs (healthcheck)" '[ ! -s /tmp/canary-nonnp ]'
+docker exec -u dev -e PATH="$DEV_PATH" t3-dev grep -q x /dev/null || true
+check "control: a plain docker exec (no no_new_privs) trips the canary" '[ -s /tmp/canary-nonnp ]'
 check "control: the planted grep runs for dev" '"$HOME"/.local/bin/grep -q x <<<x && [ -e /tmp/canary-hc ]'
 dev 'rm -f ~/.local/bin/grep /tmp/canary-hc /tmp/canary-nonnp'
+
+section "No process without no_new_privs loads Python code from dev's home (N1, E2)"
+dev 'd=$(python3 -c "import site; print(site.getusersitepackages())") && mkdir -p "$d" && printf "%s\n" "import os; s=open(\"/proc/self/status\").read(); (\"NoNewPrivs:\\t0\" in s) and open(\"/tmp/canary-pth-%d\" % os.getpid(), \"w\").write(open(\"/proc/self/cmdline\").read().replace(\"\\0\", \" \"))" > "$d/t3canary.pth" && cp "$d/t3canary.pth" "$d/usercustomize.py"'
+check "control: a dev python without no_new_privs loads the planted .pth" 'rm -f /tmp/canary-pth-*; python3 -c pass; ls /tmp/canary-pth-*'
+dev 'rm -f /tmp/canary-pth-*; kill -TERM 1' || true
+sleep 40
+wait_ready
+sleep 30
+check "supervisord runs isolated (python3 -I)" 'tr "\0" " " < /proc/$(pgrep -x supervisord)/cmdline | grep -q "python3 -I"'
+check "nothing without no_new_privs loaded it after a restart (supervisord, entrypoint)" '! cat /tmp/canary-pth-* 2>/dev/null | grep .'
+dev 'd=$(python3 -c "import site; print(site.getusersitepackages())"); rm -f "$d/t3canary.pth" "$d/usercustomize.py" /tmp/canary-pth-*'
 
 section "Home and runtime settings (H6, R2-R4)"
 check "home and workspace are private (0700)" '[ "$(stat -c %a ~)" = 700 ] && [ "$(stat -c %a /workspace)" = 700 ]'

@@ -4,7 +4,7 @@ other="$RUNNER_TEMP/t3-dev-other-key"
 rm -f "$key" "$key.pub" "$other" "$other.pub"
 ssh-keygen -q -t ed25519 -N '' -f "$key"
 ssh-keygen -q -t ed25519 -N '' -f "$other"
-ssh_opts=(-p 2222 -i "$key" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -o ConnectTimeout=10)
+ssh_opts=(-p 2222 -i "$key" -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -o ConnectTimeout=10)
 no_such_user=t3-dev-ci-no-such-user-0000
 
 listener_on_2222_is_closed() {
@@ -13,7 +13,7 @@ listener_on_2222_is_closed() {
   dev "nohup python3 -m http.server 2222 --bind 0.0.0.0 >/dev/null 2>&1 &"
   sleep 2
   check "$label: control, a dev listener answers on 2222 inside" 'curl -fsS -o /dev/null --max-time 5 http://127.0.0.1:2222/'
-  check_host "$label: it gets no inbound connections" "! curl -sS -o /dev/null --max-time 5 http://$ip:2222/"
+  check_host "$label: it gets no inbound connections" "[ -n '$ip' ] && ! curl -sS -o /dev/null --max-time 5 http://$ip:2222/"
   dev 'pkill -f "http.server 2222"' || true
 }
 
@@ -33,6 +33,8 @@ listener_on_2222_is_closed "GITHUB_USER without keys"
 section "SSH with GITHUB_USER and SSH_AUTHORIZED_KEYS (set on t3-dev-net)"
 restart_with "$image" "GITHUB_USER=bzumik1" "SSH_AUTHORIZED_KEYS=$(cat "$key.pub")"
 wait_for "sshd listens" 90 'ssh-keyscan -p 2222 127.0.0.1 2>/dev/null | grep -q ssh-ed25519'
+ip=$(docker inspect -f "{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}" t3-dev-net)
+check_host "control: SSH answers on the container address the closed-port checks use" "[ -n '$ip' ] && ssh-keyscan -T 5 -p 2222 $ip 2>/dev/null | grep -q ssh-ed25519"
 check "keys from GitHub and the extra key are installed read-only" '[ "$(grep -c . /etc/t3-dev/shared/authorized_keys)" -ge 2 ] && [ "$(stat -c %u /etc/t3-dev/shared/authorized_keys)" = 0 ] && ! touch /etc/t3-dev/shared/authorized_keys 2>/dev/null'
 check "the keys file has no duplicates" '[ -z "$(sort /etc/t3-dev/shared/authorized_keys | uniq -d)" ]'
 check "sshd reads keys only from the read-only file" '/usr/sbin/sshd -T -f /etc/t3-dev/sshd_config 2>/dev/null | grep -i "^authorizedkeysfile" | grep -qx "authorizedkeysfile /etc/t3-dev/shared/authorized_keys"'
@@ -46,12 +48,8 @@ check_host "a key added by a dev process does not work" "! ssh -p 2222 -i $other
 check_host "password login refused" "! ssh -p 2222 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no dev@127.0.0.1 true"
 check_host "root login refused" "! ssh ${ssh_opts[*]} root@127.0.0.1 true"
 check_host "local port forwarding to the container works" "ssh ${ssh_opts[*]} -o ExitOnForwardFailure=yes -L 13773:127.0.0.1:2222 dev@127.0.0.1 'sleep 10' & sleep 4; ssh-keyscan -T 5 -p 13773 127.0.0.1 2>&1 | grep ssh-ed25519"
-gateway=$(dev "ip route | awk '/default/ {print \$3}'")
-python3 -m http.server 18999 --bind 0.0.0.0 >/dev/null 2>&1 &
-host_server=$!
-sleep 2
-check_host "local port forwarding into the LAN is refused" "ssh ${ssh_opts[*]} -L 18996:$gateway:18999 dev@127.0.0.1 'sleep 10' & sleep 4; ! curl -fsS -o /dev/null --max-time 4 http://127.0.0.1:18996/"
-kill "$host_server"
+check_host "control: stdio forwarding to the container localhost works" "ssh ${ssh_opts[*]} -W 127.0.0.1:2222 dev@127.0.0.1 </dev/null 2>/dev/null | head -c 7 | grep -qx SSH-2.0"
+check_host "forwarding to an internet host is refused by PermitOpen (not by the firewall)" "ssh ${ssh_opts[*]} -W github.com:443 dev@127.0.0.1 </dev/null 2>&1 | grep -qi 'administratively prohibited'"
 check_host "remote port forwarding refused" "! timeout 15 ssh ${ssh_opts[*]} -o ExitOnForwardFailure=yes -R 2299:127.0.0.1:22 dev@127.0.0.1 true"
 
 section "Host key persists"
@@ -62,9 +60,31 @@ wait_for "sshd back after recreate" 90 'ssh-keyscan -p 2222 127.0.0.1 2>/dev/nul
 check_host "host key unchanged after recreate" "[ \"\$(ssh-keyscan -p 2222 127.0.0.1 2>/dev/null | ssh-keygen -lf - | awk '{print \$2}' | sort | head -1)\" = '$fingerprint' ]"
 check "no duplicate keys after a restart" '[ -z "$(sort /etc/t3-dev/shared/authorized_keys | uniq -d)" ]'
 
-section "Revocation takes effect (K1)"
-restart_with "$image" "GITHUB_USER=$no_such_user" "SSH_AUTHORIZED_KEYS="
+section "Revocation takes effect while sshd keeps running (K1, T7)"
+restart_with "$image" "GITHUB_USER=$no_such_user" "SSH_AUTHORIZED_KEYS=$(cat "$other.pub")"
+wait_for "sshd listens with the kept key" 90 'ssh-keyscan -p 2222 127.0.0.1 2>/dev/null | grep -q ssh-ed25519'
+check_host "control: the kept key logs in" "ssh -p 2222 -i $other -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes -o ConnectTimeout=10 dev@127.0.0.1 true"
+check_host "the dropped key no longer logs in" "! ssh ${ssh_opts[*]} dev@127.0.0.1 true"
+check "only the kept key is installed" '[ "$(grep -c . /etc/t3-dev/shared/authorized_keys)" = 1 ]'
+
+section "GitHub unreachable: cached keys only for the same user and at most 7 days (K1, T8)"
+offline() {
+  docker compose -f "$compose" down --timeout 60 >/dev/null 2>&1 || true
+  write_compose "$image" "$@"
+  mutate 's#^    dns:$#    extra_hosts:\n      - "github.com:198.18.0.1"\n    dns:#'
+  docker compose -f "$compose" up -d --quiet-pull || true
+  wait_ready
+}
+start "$image" "GITHUB_USER=bzumik1"
 wait_ready
-sleep 5
-check "keys file is empty after switching to a user without keys and dropping the extra key" '[ ! -s /etc/t3-dev/shared/authorized_keys ]'
-check_host "the old key no longer logs in" "! ssh ${ssh_opts[*]} dev@127.0.0.1 true"
+check "control: keys from GitHub are installed" '[ -s /etc/t3-dev/shared/authorized_keys ]'
+offline "GITHUB_USER=bzumik1"
+check_host "same user: the cached keys are used" 'docker logs t3-dev-net 2>&1 | grep -q "GitHub je nedostupný (HTTP 000), používám klíče bzumik1"'
+check "same user: keys installed while GitHub is unreachable" '[ -s /etc/t3-dev/shared/authorized_keys ]'
+sudo sed -i "1s/fetched=[0-9]*/fetched=$(( $(date +%s) - 8 * 86400 ))/" "$work/shared/authorized_keys.github"
+offline "GITHUB_USER=bzumik1"
+check "cache older than 7 days is not used" '[ ! -s /etc/t3-dev/shared/authorized_keys ]'
+start "$image" "GITHUB_USER=bzumik1"
+wait_ready
+offline "GITHUB_USER=octocat"
+check "the cache of another user is not used" '[ ! -s /etc/t3-dev/shared/authorized_keys ]'

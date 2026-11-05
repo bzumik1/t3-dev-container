@@ -25,6 +25,10 @@ libc = ctypes.CDLL(None, use_errno=True)
 r = libc.syscall(250, 0, 0, 0, 0, 0)
 sys.exit(0 if r == -1 and ctypes.get_errno() == 38 else 1)
 PY
+pids_max=$(cat /sys/fs/cgroup/pids.max 2>/dev/null || echo max)
+mem_max=$(cat /sys/fs/cgroup/memory.max 2>/dev/null || echo max)
+if [ "$pids_max" = max ] || [ "$pids_max" -gt 8192 ]; then die "chybí pids_limit (compose.yml)."; fi
+if [ "$mem_max" = max ]; then die "chybí mem_limit (compose.yml)."; fi
 if [ -e /proc/sys/net/ipv6/conf/all/disable_ipv6 ] && [ "$(cat /proc/sys/net/ipv6/conf/all/disable_ipv6)" != 1 ]; then
   die "IPv6 není vypnuté (sysctls u t3-dev-net)."
 fi
@@ -40,7 +44,7 @@ case "${FIREWALL_EXPECTED:-on}" in
     log "VAROVÁNÍ: nekontroluji firewall (FIREWALL_EXPECTED=off)."
     ;;
   *)
-    netns=$(readlink /proc/self/ns/net)
+    netns=$(/usr/local/libexec/t3-dev/netns-id)
     firewall_ok=0
     for _ in $(seq 120); do
       if [ "$(cat /etc/t3-dev/shared/firewall 2>/dev/null)" = "$netns" ] \
@@ -73,4 +77,4 @@ find "$XDG_RUNTIME_DIR" -mindepth 1 -delete 2>/dev/null || true
 chmod 0700 "$XDG_RUNTIME_DIR"
 
 log "Sandbox ověřen. Spouštím služby (server: $server_name)."
-exec /usr/bin/tini -g -- /usr/bin/supervisord -n -c /etc/t3-dev/supervisord.conf
+exec /usr/bin/tini -g -- /usr/local/libexec/t3-dev/supervisord -n -c /etc/t3-dev/supervisord.conf

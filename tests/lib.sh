@@ -73,6 +73,32 @@ mutate() {
   if cmp -s "$compose" "$compose.orig"; then fail "compose mutation had no effect: $1"; fi
 }
 
+# install_rejected_probe: /tmp/rejected.py in t3-dev. "python3 -I /tmp/rejected.py HOST PORT [udp]"
+# exits 0 only when the firewall rejects the connection (EHOSTUNREACH, EPERM,
+# EACCES), so a timeout on the runner never counts as "blocked".
+install_rejected_probe() {
+  put_file /tmp/rejected.py <<'PY'
+import errno, socket, sys
+host, port, proto = sys.argv[1], int(sys.argv[2]), sys.argv[3] if len(sys.argv) > 3 else "tcp"
+if proto == "udp":
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.settimeout(3)
+    s.connect((host, port))
+    try:
+        s.send(b"x")
+        s.recv(1)
+        sys.exit(1)
+    except OSError as e:
+        print(errno.errorcode.get(e.errno, e))
+        sys.exit(0 if e.errno in (errno.EHOSTUNREACH, errno.EPERM, errno.EACCES) else 1)
+s = socket.socket()
+s.settimeout(3)
+e = s.connect_ex((host, port))
+print(errno.errorcode.get(e, e))
+sys.exit(0 if e in (errno.EHOSTUNREACH, errno.EPERM, errno.EACCES) else 1)
+PY
+}
+
 # start <image> [KEY=VALUE ...]: fresh volumes, container up.
 start() {
   if [ -f "$compose" ]; then docker compose -f "$compose" down --volumes --timeout 30 >/dev/null 2>&1 || true; fi
@@ -108,5 +134,5 @@ finish() {
     echo "$failures check(s) failed"
     exit 1
   fi
-  echo "All checks passed${skips:+ ($skips skipped)}"
+  if [ "$skips" -gt 0 ]; then echo "All checks passed ($skips skipped)"; else echo "All checks passed"; fi
 }

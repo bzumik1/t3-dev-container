@@ -28,16 +28,33 @@ jobs:
         with:
           persist-credentials: false
       - name: ShellCheck
-        run: shellcheck -x -P tests tests/run.sh tests/lib.sh tests/suites/*.sh rootfs/usr/local/bin/* rootfs/usr/local/libexec/t3-dev/*
+        run: shellcheck -x -P tests tests/run.sh tests/lib.sh tests/suites/*.sh rootfs/usr/local/libexec/t3-dev/net-lib $(grep -lE "^#!/bin/(ba)?sh" rootfs/usr/local/bin/* rootfs/usr/local/libexec/t3-dev/*)
       - name: Hadolint
         run: docker run --rm -i hadolint/hadolint@sha256:fdf19d026b54834f88c62774fdf2a61ff3b586a42632e5070674d41a796bfdf3 hadolint --failure-threshold error - < Dockerfile
       - name: compose.yml is valid
         run: docker compose -f compose.yml config -q
+      - name: compose-version refuses malformed and old versions
+        run: |
+          for v in "" x 3.9 3a 1e9 3 " 4"; do
+            if T3_DEV_COMPOSE="$v" bash rootfs/usr/local/libexec/t3-dev/compose-version >/dev/null 2>&1; then echo "accepted '$v'"; exit 1; fi
+          done
+          T3_DEV_COMPOSE=4 bash rootfs/usr/local/libexec/t3-dev/compose-version
+      - name: GitHub key download outcomes
+        run: |
+          . rootfs/usr/local/libexec/t3-dev/net-lib
+          [ "$(classify_fetch 0 200)" = keys ] && [ "$(classify_fetch 22 404)" = none ] && [ "$(classify_fetch 0 404)" = none ]
+          [ "$(classify_fetch 22 503)" = cache ] && [ "$(classify_fetch 22 429)" = cache ] && [ "$(classify_fetch 7 000)" = cache ] && [ "$(classify_fetch 63 200)" = cache ]
+      - name: Helpers and README never suggest docker exec without no_new_privs
+        run: "! grep -nE \"docker exec (-u dev )?t3-dev (t3-dev|zsh|bash)\" rootfs/usr/local/bin/t3-dev README.md"
+      - name: Every npm/npx/pnpm call in the Dockerfile ignores install scripts
+        run: "! grep -nE \"(npm|npx|pnpm) \" Dockerfile | grep -v NPM_CONFIG_IGNORE_SCRIPTS=true"
+      - name: README tells clients how to connect safely
+        run: grep -q "KbdInteractiveAuthentication no" README.md && grep -q "IdentitiesOnly yes" README.md
       - name: No mount target of a service lies inside another of its volumes
         run: |
-          python3 - <<'PY'
+          python3 - compose.yml <<'PY'
           import json, subprocess, sys
-          config = json.loads(subprocess.check_output(["docker", "compose", "-f", "compose.yml", "config", "--format", "json"]))
+          config = json.loads(subprocess.check_output(["docker", "compose", "-f", sys.argv[1], "config", "--format", "json"]))
           bad = []
           for name, service in config["services"].items():
               targets = [v["target"] for v in service.get("volumes", [])]
@@ -45,12 +62,29 @@ jobs:
                   for o in targets:
                       if t != o and (t + "/").startswith(o.rstrip("/") + "/"):
                           bad.append(f"{name}: {t} inside {o}")
+          rw = [v["source"] for v in config["services"]["t3-dev"]["volumes"] if not v.get("read_only")]
+          for name, service in config["services"].items():
+              for v in service.get("volumes", []):
+                  for r in rw:
+                      a, b = v["source"].rstrip("/") + "/", r.rstrip("/") + "/"
+                      if a != b and (a.startswith(b) or b.startswith(a)):
+                          bad.append(f"{name}: source {v['source']} overlaps t3-dev writable source {r}")
           print("\n".join(bad) or "ok")
           sys.exit(1 if bad else 0)
           PY
+          sed "s#/DATA/AppData/t3-dev/shared#/DATA/AppData/t3-dev/home/shared#" compose.yml > /tmp/bad.yml
+          if python3 - /tmp/bad.yml 2>/dev/null <<'PY'
+          import json, subprocess, sys
+          config = json.loads(subprocess.check_output(["docker", "compose", "-f", sys.argv[1], "config", "--format", "json"]))
+          rw = [v["source"] for v in config["services"]["t3-dev"]["volumes"] if not v.get("read_only")]
+          srcs = [v["source"] for s in config["services"].values() for v in s.get("volumes", [])]
+          sys.exit(1 if any(a != b and (a + "/").startswith(b + "/") for a in srcs for b in rw) else 0)
+          PY
+          then echo "control: the overlap check did not catch shared inside home"; exit 1; fi
       - name: compose.yml version matches the image
         run: |
-          want=$(sed -n 's/^    T3_DEV_COMPOSE_REQUIRED=//p' Dockerfile)
+          want=$(sed -n 's/^required=\([0-9]*\).*/\1/p' rootfs/usr/local/libexec/t3-dev/compose-version)
+          [ -n "$want" ]
           [ "$(grep -c "T3_DEV_COMPOSE: \"$want\"" compose.yml)" = 3 ]
       - name: seccomp.json matches its generator
         run: |
@@ -123,7 +157,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Install Docker 27.5.1 on the runner, as on ZimaOS 1.7
+      - name: Install Docker 27.5.1 on the runner, as on ZimaOS 1.8
         if: matrix.suite == 'docker-27'
         run: |
           sudo install -d -m 0755 /etc/apt/keyrings

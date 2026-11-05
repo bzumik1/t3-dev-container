@@ -11,6 +11,8 @@ services:
       T3_DEV_COMPOSE: "4"
     restart: "no"
     read_only: true
+    healthcheck:
+      disable: true
     cap_drop:
       - ALL
     cap_add:
