@@ -60,3 +60,25 @@ check "Docker host still blocked after the daemon restart" "! curl -sS -o /dev/n
 check "internet still reachable after the daemon restart" 'curl -fsS -o /dev/null --max-time 15 https://github.com'
 
 kill "$host_server"
+
+section "T3 Connect: a successful sign-in starts the server (no endless sign-in loop)"
+docker compose -f "$compose" down --volumes --timeout 30 >/dev/null 2>&1 || true
+sudo rm -rf "$work"
+write_compose "$image" "T3_CONNECT=true"
+sudo mkdir -p "$work/home/.local/bin"
+sudo tee "$work/home/.local/bin/t3" >/dev/null <<'SH'
+#!/bin/sh
+case "$1 $2" in
+  "connect status") if [ -e /tmp/fake-t3-linked ]; then echo "Authorization: stored credential"; else echo "Authorization: none"; fi ;;
+  "connect link") read -r answer; echo "answer=$answer" >> /tmp/fake-t3-link; touch /tmp/fake-t3-linked; echo "Authorized"; exit 0 ;;
+  serve*) echo started > /tmp/fake-t3-served; exec sleep infinity ;;
+  *) exit 0 ;;
+esac
+SH
+sudo chmod +x "$work/home/.local/bin/t3"
+sudo chown -R 1000:1000 "$work/home"
+docker compose -f "$compose" up -d --quiet-pull || true
+wait_for "the server starts right after a successful sign-in" 420 '[ -e /tmp/fake-t3-served ]'
+check "the sign-in ran exactly once and answered the prompt with y" '[ "$(cat /tmp/fake-t3-link)" = "answer=y" ]'
+check_host "no retry message in the log" '! docker logs t3-dev 2>&1 | grep -q "přihlášení se nedokončilo"'
+check "t3-dev connect signs in again and restarts the server" 'rm -f /tmp/fake-t3-served && t3-dev connect >/dev/null 2>&1; for i in $(seq 60); do [ -e /tmp/fake-t3-served ] && break; sleep 2; done; [ -e /tmp/fake-t3-served ] && [ "$(grep -c "^answer=y$" /tmp/fake-t3-link)" = 2 ]'

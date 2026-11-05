@@ -39,7 +39,14 @@ install_agents() {
   install_one t3 "$HOME/.local/bin/t3" https://t3.codes/install.sh sh || failed=1
   install_one codex "$HOME/.local/bin/codex" https://chatgpt.com/codex/install.sh sh || failed=1
   install_one claude "$HOME/.local/bin/claude" https://claude.ai/install.sh bash || failed=1
-  install_one opencode "$HOME/.opencode/bin/opencode" https://opencode.ai/install bash || failed=1
+  install_one opencode "$HOME/.opencode/bin/opencode" https://opencode.ai/v2/install bash || failed=1
+  # Older images left OpenCode 1 in the persistent home; T3 needs OpenCode 2 (>= 2.0.18).
+  # Only OpenCode 1 knows --major, OpenCode 2 rejects it.
+  if [ -x "$HOME/.opencode/bin/opencode" ] && "$HOME/.opencode/bin/opencode" --version 2>/dev/null | grep -q '^1\.'; then
+    log "Přecházím na OpenCode 2..."
+    "$HOME/.opencode/bin/opencode" upgrade --major >/tmp/t3-dev-install-opencode-major.log 2>&1 \
+      || { log "Přechod na OpenCode 2 selhal (log: /tmp/t3-dev-install-opencode-major.log)."; failed=1; }
+  fi
   return $failed
 }
 
@@ -88,7 +95,7 @@ case "${1:-help}" in
   install-agents) as_dev "$@"; install_agents ;;
   update-agents) as_dev "$@"; update_agents ;;
   status) as_dev "$@"; status ;;
-  connect) as_dev "$@"; yes y | t3 connect link --headless && /usr/bin/python3 -I /usr/bin/supervisorctl -c /etc/t3-dev/supervisord.conf restart t3 ;;
+  connect) as_dev "$@"; printf 'y\n' | t3 connect link --headless && /usr/bin/python3 -I /usr/bin/supervisorctl -c /etc/t3-dev/supervisord.conf restart t3 ;;
   restart) as_dev "$@"; /usr/bin/python3 -I /usr/bin/supervisorctl -c /etc/t3-dev/supervisord.conf restart "${2:?Zadejte službu: dockerd, sshd nebo t3}" ;;
   health) health ;;
   *) usage ;;

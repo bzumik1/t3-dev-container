@@ -27,7 +27,7 @@ case "${T3_CONNECT:-true}" in
       log "=================================================================="
       log " T3 Connect: otevřete odkaz níže a schvalte přihlášení svým účtem."
       log "=================================================================="
-      until yes y | t3 connect link --headless; do
+      until printf 'y\n' | t3 connect link --headless; do
         log "T3 Connect: přihlášení se nedokončilo, zkouším znovu za 10 s."
         sleep 10
       done

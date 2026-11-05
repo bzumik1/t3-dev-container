@@ -17,3 +17,7 @@ if [ "$EUID" = 1000 ] && { /usr/bin/grep -q '^NoNewPrivs:[[:space:]]*0' /proc/se
   echo "t3-dev: could not enter the sandbox, refusing to continue" >&2
   exit 1
 fi
+# dev inside the sandbox: same environment as zsh.
+if [ "$EUID" = 1000 ]; then
+  . /etc/t3-dev/env.sh
+fi

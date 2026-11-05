@@ -107,11 +107,21 @@ sys.exit(0 if e in (errno.EHOSTUNREACH, errno.EPERM, errno.EACCES) else 1)
 PY
 }
 
+# zimaos_dirs: create the bind-mount directories the way ZimaOS 1.8 does
+# (root, 0777) instead of the 0755 a plain Docker daemon uses.
+zimaos_dirs() {
+  local d
+  for d in home workspace docker shared; do
+    sudo install -d -m 0777 -o root -g root "$work/$d"
+  done
+}
+
 # start <image> [KEY=VALUE ...]: fresh volumes, container up.
 start() {
   if [ -f "$compose" ]; then docker compose -f "$compose" down --volumes --timeout 30 >/dev/null 2>&1 || true; fi
   sudo rm -rf "$work"
   write_compose "$@"
+  zimaos_dirs
   docker compose -f "$compose" up -d --quiet-pull || true
 }
 
