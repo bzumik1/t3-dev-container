@@ -178,8 +178,21 @@ jobs:
           format: table
           skip-setup-trivy: true
 
+  gate:
+    if: always()
+    needs: [lint, build, test, scan]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Every required job passed
+        env:
+          RESULTS: ${{ needs.lint.result }} ${{ needs.build.result }} ${{ needs.test.result }} ${{ needs.scan.result }}
+        run: |
+          echo "$RESULTS"
+          [ "$RESULTS" = "success success success success" ]
+
   publish:
-    needs: [lint, test, scan]
+    needs: [gate]
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
