@@ -4,7 +4,7 @@ start "$image"
 section "Languages"
 check "java 25 (Temurin)" 'java -version 2>&1 | grep -q "\"25" && java -version 2>&1 | grep -qi temurin'
 check "javac 25" 'javac -version 2>&1 | grep -q "^javac 25"'
-check "node 24" 'node -v | grep -q "^v24\."'
+check "node 26" 'node -v | grep -q "^v26\."'
 check_host "npm is the pinned version" "[ \"\$(docker exec t3-dev npm -v)\" = \"$(sed -n 's/^ARG NPM_VERSION=//p' "$root/Dockerfile")\" ]"
 check "pnpm" 'pnpm -v'
 check "python3 for scripts" 'python3 --version'
@@ -26,7 +26,7 @@ check "shell tools" 'for t in jq yq rg fd fzf tmux vim less htop zsh starship rs
 check "docker CLI, compose, buildx" 'docker --version && docker compose version && docker buildx version'
 check "t3-dev helper" 't3-dev help | grep -q install-agents'
 check "mise installs a runtime without root" 'mise exec python@3.13 -- python --version'
-check "mise installs node 22 next to 24" 'mise exec node@22 -- node -v | grep -q "^v22"'
+check "mise installs node 22 next to 26" 'mise exec node@22 -- node -v | grep -q "^v22"'
 check "locale UTF-8" 'locale | grep -q "UTF-8" && python3 -c "print(\"čeština\")" | grep -q čeština'
 check "zsh config loads cleanly" 'zsh -ic "exit" 2>&1 | { ! grep -qi "error\|not found"; }'
 check "agent guidance installed on first start" 'for f in ~/.codex/AGENTS.md ~/.claude/CLAUDE.md ~/.config/opencode/AGENTS.md; do for i in $(seq 60); do [ -s $f ] && break; sleep 2; done; [ -s $f ] || { echo "missing $f"; exit 1; }; done'
