@@ -26,3 +26,14 @@ check "memory limit kills the hog inside, not the container" '! sh -c "head -c 9
 check_host "container kept running" '[ "$(docker inspect -f "{{.State.Running}}" t3-dev)" = true ]'
 check "nested containers count against the same limits" 'docker run --rm alpine sh -c "cat /sys/fs/cgroup/pids.max 2>/dev/null || true"; out=$(docker run --rm alpine sh -c "head -c 9G /dev/zero | tail" 2>&1); echo "$out"; sleep 5; pgrep supervisord >/dev/null'
 check_host "host free memory unaffected" 'free -g; [ "$(free -g | awk "/Mem:/ {print \$7}")" -ge 2 ]'
+
+section "Shells see the CPU quota, not every host CPU"
+docker compose -f "$compose" down --timeout 60 >/dev/null 2>&1
+write_compose "$image"
+mutate "s#^    cpus: .*#    cpus: 1.5#"
+docker compose -f "$compose" up -d --quiet-pull || true
+wait_ready
+check_agent "control: the host has more CPUs than the quota" '[ "$(cat /sys/fs/cgroup/cpu.max)" = "150000 100000" ] && [ "$(env -u OMP_NUM_THREADS nproc)" -gt 2 ]'
+check_agent "nproc in zsh reports the quota, rounded up" '[ "$(zsh -c nproc)" = 2 ]'
+check_agent "nproc in login bash reports the quota, rounded up" '[ "$(bash -lc nproc)" = 2 ]'
+check_agent "a project can still set its own thread count" '[ "$(OMP_NUM_THREADS=1 zsh -c nproc)" = 1 ]'
