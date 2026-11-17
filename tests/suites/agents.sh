@@ -39,3 +39,17 @@ section "OpenCode 1 left by an older image"
 check "control: OpenCode 1 replaces OpenCode 2" 'curl -fsSL --retry 3 https://opencode.ai/install | bash -s -- --no-modify-path >/dev/null 2>&1; ~/.opencode/bin/opencode --version | grep -q "^1\."'
 check "install-agents moves it to OpenCode 2" "t3-dev install-agents && $opencode_recent"
 check "update-agents runs the OpenCode 2 upgrade" 'out=$(t3-dev update-agents 2>&1); printf "%s\n" "$out"; printf "%s\n" "$out" | grep -q "Using method" && ! printf "%s\n" "$out" | grep -q "opencode upgrade selhal"'
+
+section "Daily maintenance at 04:00"
+check "maintenance sleeps until the next 04:00" 'm=$(supervisorctl -c /etc/t3-dev/supervisord.conf pid maintenance); read -r e s < <(ps -o etimes=,args= --ppid "$m" | awk "\$2 == \"sleep\" {print \$1, \$3}"); [ -n "$s" ] || exit 1; t=$(( $(date +%s) - e + s )); n=$(date -d "today 04:00" +%s); [ "$n" -gt "$(date +%s)" ] || n=$(date -d "tomorrow 04:00" +%s); echo "wakes at $(date -d "@$t"), next 04:00 is $(date -d "@$n")"; [ $((t - n)) -le 60 ] && [ $((n - t)) -le 60 ]'
+
+section "Daily update keeps T3 in step with the other devices"
+put_file /tmp/t3-serving.sh <<'SH'
+p=$(supervisorctl -c /etc/t3-dev/supervisord.conf pid t3)
+[ "${p:-0}" -gt 0 ] || exit 1
+{ readlink "/proc/$p/exe"; tr '\0' '\n' < "/proc/$p/cmdline"; } | grep -q "/versions/$1/"
+SH
+check "control: the t3 service serves an older T3" 'curl -fsSL --retry 3 https://t3.codes/install.sh | T3CODE_VERSION=0.1.7 sh >/dev/null 2>&1 && t3 --version | grep -q "v0.1.7$" && t3-dev restart t3 >/dev/null && bash /tmp/t3-serving.sh 0.1.7'
+check_agent "maintenance update moves T3 to the newest release and restarts the server" '/usr/local/libexec/t3-dev/maintenance update && v=$(t3 --version) && v=${v##*v} && echo "now $v" && [ "$v" != 0.1.7 ] && bash /tmp/t3-serving.sh "$v"'
+wait_for "t3 server answers after the update" 120 'curl -fsS -o /dev/null http://127.0.0.1:3773/'
+check_agent "maintenance update leaves an up-to-date T3 server running" 'p=$(supervisorctl -c /etc/t3-dev/supervisord.conf pid t3); /usr/local/libexec/t3-dev/maintenance update && [ "$(supervisorctl -c /etc/t3-dev/supervisord.conf pid t3)" = "$p" ]'

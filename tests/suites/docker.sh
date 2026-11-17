@@ -53,5 +53,5 @@ dev 'docker run -d --name p2 -p 0.0.0.0:18082:80 nginx:alpine >/dev/null; sleep 
 check "control: the 0.0.0.0-published nested port answers inside" 'curl -fsS -o /dev/null --max-time 5 http://127.0.0.1:18082/'
 check_host "an explicitly 0.0.0.0-published nested port is still unreachable from the host" "[ -n '$ip' ] && ! curl -sS -o /dev/null --max-time 5 http://$ip:18082/"
 dev 'docker rm -f p2 >/dev/null'
-check "maintenance removes stopped containers" 'docker run --name stopped alpine true && [ -n "$(docker ps -aq --filter name=^stopped$)" ] && MAINTENANCE_UNTIL=0s /usr/local/libexec/t3-dev/maintenance --once && [ -z "$(docker ps -aq --filter name=^stopped$)" ]'
+check "maintenance removes stopped containers" 'docker run --name stopped alpine true && [ -n "$(docker ps -aq --filter name=^stopped$)" ] && MAINTENANCE_UNTIL=0s /usr/local/libexec/t3-dev/maintenance prune && [ -z "$(docker ps -aq --filter name=^stopped$)" ]'
 kill "$host_server"
