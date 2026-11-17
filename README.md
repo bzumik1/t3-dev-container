@@ -9,7 +9,7 @@ Postavené pro ZimaOS, ale funguje na libovolném Linuxu s Dockerem.
 - **T3 Code** s T3 Connect: server je dostupný z Macu, mobilu i webu bez otevřeného portu.
 - **Agenti:** Codex, Claude Code a OpenCode. Instalují se při prvním startu do domovského adresáře a dál se aktualizují samy. Přihlášení přežije restart i nový image.
 - **Docker uvnitř** (rootless) s Compose a Buildx: `docker run`, `docker compose` i Testcontainers.
-- **Jazyky:** Java 25 (Temurin), Node 24 s npm a pnpm, systémové knihovny pro Playwright Chromium a WebKit. Další verze a jazyky přes [`mise`](https://mise.jdx.dev) bez roota.
+- **Jazyky:** Java 25 (Temurin), Node 26 s npm a pnpm, systémové knihovny pro Playwright Chromium a WebKit. Další verze a jazyky přes [`mise`](https://mise.jdx.dev) bez roota.
 - **Nástroje:** git, gh, build-essential, jq, yq, ripgrep, fd, fzf, tmux, vim, htop, zsh se starship, bubblewrap a další.
 - **SSH** na portu 2222, jen klíčem (veřejné klíče z GitHubu).
 
