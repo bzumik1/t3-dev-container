@@ -51,10 +51,10 @@ install_agents() {
 }
 
 update_agents() {
-  exec 9>/run/user/1000/t3-dev-update.lock
+  exec 9>>/run/user/1000/t3-dev-update.lock
   if ! flock -n 9; then
     log "Čekám na jinou aktualizaci agentů..."
-    flock 9
+    flock -w 1800 9 || { log "Jiná aktualizace agentů neskončila do 30 minut."; return 1; }
   fi
   log "Aktualizuji agenty..."
   t3 update || log "t3 update selhal."

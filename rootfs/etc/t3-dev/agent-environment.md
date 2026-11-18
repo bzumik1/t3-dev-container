@@ -6,7 +6,7 @@ You run inside `t3-dev`, a hardened dev container (Ubuntu 24.04) on the owner's 
 
 - You are the unprivileged user `dev` (UID 1000), in a sandbox: `no_new_privs` and your own user namespace. There is no root, no `sudo`, no setuid program. Do not try `apt-get`, `sudo`, `su`, or to change system files.
 - No systemd. Services (Docker, SSH, T3) are run by supervisord; `t3-dev status` shows them.
-- Every day at 04:00 (container time) the agents update. When the T3 server runs another version than the `t3` command, also after a manual `t3-dev update-agents`, the T3 server restarts, which interrupts the threads running at that moment. Never restart the `t3` service from a T3 thread yourself, because that ends the thread.
+- Every day at 04:00 (container time) the agents update. When the T3 server runs another version than the `t3` command, also after a manual `t3-dev update-agents`, the T3 server restarts at 04:00, which interrupts the threads running at that moment. Never restart the `t3` service from a T3 thread yourself, because that ends the thread.
 - The home directory and `/workspace` persist. Everything else in the container is reset when the image is updated.
 
 ## Tools

@@ -23,9 +23,12 @@ prune() {
 version_in() { sed -n 's#.*/versions/\([^/]*\)/.*#\1#p' | head -1; }
 
 installed_t3() {
-  local launcher=/home/dev/.local/bin/t3 target
-  target=$(readlink -f "$launcher" 2>/dev/null)
-  case "$target" in */versions/*) echo "$target" | version_in ;; *) version_in 2>/dev/null <"$launcher" ;; esac
+  local target
+  target=$(readlink -f /home/dev/.local/bin/t3 2>/dev/null)
+  case "$target" in
+    */versions/*) echo "$target" | version_in ;;
+    *) [ -f "$target" ] && head -c 4096 "$target" | version_in ;;
+  esac
 }
 
 served_t3() {
@@ -46,6 +49,8 @@ update() {
     else
       printf '[t3-dev] Údržba: restart T3 serveru na %s selhal.\n' "$installed"
     fi
+  elif [ -z "$installed" ] || [ -z "$served" ]; then
+    printf '[t3-dev] Údržba: verzi T3 nelze zjistit (příkaz %s, server %s).\n' "${installed:-?}" "${served:-?}"
   fi
 }
 

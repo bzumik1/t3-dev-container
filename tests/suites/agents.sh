@@ -41,9 +41,10 @@ check "install-agents moves it to OpenCode 2" "t3-dev install-agents && $opencod
 check "update-agents runs the OpenCode 2 upgrade" 'out=$(t3-dev update-agents 2>&1); printf "%s\n" "$out"; printf "%s\n" "$out" | grep -q "Using method" && ! printf "%s\n" "$out" | grep -q "opencode upgrade selhal"'
 
 section "Daily maintenance at 04:00"
+maintenance_restart=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 check "maintenance cleans up ten minutes after a start" 'supervisorctl -c /etc/t3-dev/supervisord.conf restart maintenance >/dev/null; sleep 2; m=$(supervisorctl -c /etc/t3-dev/supervisord.conf pid maintenance); ps -o args= --ppid "$m" | grep -qx "sleep 600"'
 check "after that clean-up maintenance sleeps until the next 04:00" 'm=$(supervisorctl -c /etc/t3-dev/supervisord.conf pid maintenance); pkill -P "$m" -x sleep; s=; for _ in $(seq 60); do read -r e s < <(ps -o etimes=,args= --ppid "$m" | awk "\$2 == \"sleep\" && \$3 != 600 {print \$1, \$3}"); [ -n "$s" ] && break; sleep 1; done; [ -n "$s" ] || exit 1; t=$(( $(date +%s) - e + s )); n=$(date -d "today 04:00" +%s); [ "$n" -gt "$(date +%s)" ] || n=$(date -d "tomorrow 04:00" +%s); echo "wakes at $(date -d "@$t"), next 04:00 is $(date -d "@$n")"; [ $((t - n)) -le 60 ] && [ $((n - t)) -le 60 ]'
-check_host "the clean-up after the start ran" 'docker logs --since 3m t3-dev 2>&1 | grep -q "Údržba: vnořený Docker zabírá"'
+check_host "the clean-up after the start ran" "docker logs --since $maintenance_restart t3-dev 2>&1 | grep -q 'Údržba: vnořený Docker zabírá'"
 
 section "Daily update keeps T3 in step with the other devices"
 put_file /tmp/t3-serving.sh <<'SH'
