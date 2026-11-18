@@ -51,6 +51,11 @@ install_agents() {
 }
 
 update_agents() {
+  exec 9>/run/user/1000/t3-dev-update.lock
+  if ! flock -n 9; then
+    log "Čekám na jinou aktualizaci agentů..."
+    flock 9
+  fi
   log "Aktualizuji agenty..."
   t3 update || log "t3 update selhal."
   curl -fsSL --retry 3 https://t3.codes/install.sh | sh >/dev/null || log "Přepnutí příkazu t3 na novou verzi selhalo."

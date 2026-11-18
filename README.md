@@ -120,7 +120,7 @@ sudo docker pull ghcr.io/bzumik1/t3-dev-container:latest
 
 a restartem aplikace.
 
-Když nový image potřebuje nový `compose.yml` (proměnná `T3_DEV_COMPOSE`), kontejnery se nespustí a v logu je „compose.yml je zastaralý“. Pak importujte aktuální `compose.yml` a stáhněte `seccomp.json` znovu podle kroku 1 instalace. Po přechodu z verze 3 můžete smazat nepoužívaný adresář se starými klíči: `sudo rm -rf /DATA/AppData/t3-dev/ssh`. Agenti se aktualizují sami, každý den ve 4:00 (časové pásmo `TZ`). Když se změní verze T3, restartuje se T3 server a vlákna, která na serveru zrovna běží, se přeruší.
+Když nový image potřebuje nový `compose.yml` (proměnná `T3_DEV_COMPOSE`), kontejnery se nespustí a v logu je „compose.yml je zastaralý“. Pak importujte aktuální `compose.yml` a stáhněte `seccomp.json` znovu podle kroku 1 instalace. Po přechodu z verze 3 můžete smazat nepoužívaný adresář se starými klíči: `sudo rm -rf /DATA/AppData/t3-dev/ssh`. Agenti se aktualizují sami, každý den ve 4:00 (časové pásmo `TZ`). Když T3 server běží na jiné verzi, než na kterou ukazuje příkaz `t3` (i po ruční aktualizaci), restartuje se a vlákna, která na serveru zrovna běží, se přeruší. Aktualizace stahuje a spouští instalátory T3 a Codexu a aktualizace Claude Code a OpenCode přímo od jejich vydavatelů, bez 3denní ochrany, kterou mají npm, pnpm a uv. Napadené vydání by se tak na server dostalo do příštího rána, i když zůstane v sandboxu agentů.
 
 ### Stejná verze T3 na serveru a na ostatních zařízeních
 
@@ -131,7 +131,7 @@ sudo docker exec t3-dev t3-dev update-agents
 sudo docker exec t3-dev t3-dev restart t3
 ```
 
-Restart z vlákna T3 na serveru by to vlákno ukončil. T3 se stahuje z GitHub Releases s kontrolou SHA-256, ne přes npm, takže se ho 3denní ochrana balíčků netýká a nová verze je pro server k dispozici hned.
+Restart z vlákna T3 na serveru by to vlákno ukončil. T3 se stahuje z GitHub Releases, ne přes npm, takže se ho 3denní ochrana balíčků netýká a nová verze je pro server k dispozici hned. Kontrola SHA-256 pochází ze stejného vydání, takže chrání jen před poškozeným stažením, ne před podvrženým vydáním.
 
 ## Instrukce pro agenty
 
