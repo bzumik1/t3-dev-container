@@ -18,8 +18,14 @@ You run inside `t3-dev`, a hardened dev container (Ubuntu 24.04) on the owner's 
 
 - Docker is rootless and local to this container: `docker run`, `docker compose`, `docker build` and Testcontainers work (`/var/run/docker.sock` points to it).
 - Published ports listen on `localhost` of this container only. The owner reaches them through `ssh -L` or T3, not from the home network.
-- Not possible: `--privileged` containers, per-container CPU/memory limits (all nested containers share the 8 GB limit of `t3-dev`), writing to `/sys`. Nested networking (slirp4netns) is slower than native.
+- Not possible: `--privileged` containers, per-container CPU/memory limits (all nested containers share the memory limit of `t3-dev`), writing to `/sys`. Nested networking (slirp4netns) is slower than native.
 - Never use `docker cp` against containers that run untrusted code, and never mount a Docker socket into a nested container.
+
+## Memory and CPU
+
+- Everything in the container, nested Docker containers included, shares one memory limit without swap and one CPU quota, with a lower CPU priority than the other apps on the host. `cat /sys/fs/cgroup/memory.max` shows the memory limit in bytes and `nproc` the CPU quota.
+- `nproc` (through `OMP_NUM_THREADS`), `os.availableParallelism()` in Node and Java report the quota. `os.cpus().length` in Node, `/proc/cpuinfo` and `Cpus_allowed_list` show every CPU of the host, so never size a parallel run from them.
+- At the memory limit the kernel kills processes inside (a Gradle daemon, a test fork, the T3 server), and parallel runs under the CPU quota fail with timeouts. Run large test suites (for example backend, unit and end-to-end tests) one after another, not all at once, and give tools that size themselves from the host's CPU count an explicit worker count (for example Playwright `--workers`).
 
 ## Network
 
