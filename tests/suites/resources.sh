@@ -38,5 +38,5 @@ check_agent "nproc in zsh reports the quota, rounded up" '[ "$(zsh -c nproc)" = 
 check_agent "nproc in login bash reports the quota, rounded up" '[ "$(bash -lc nproc)" = 2 ]'
 check_agent "a project can still set its own thread count" '[ "$(OMP_NUM_THREADS=1 zsh -c nproc)" = 1 ]'
 check_agent "agents can read their memory limit" 'grep -qE "^[0-9]+$" /sys/fs/cgroup/memory.max'
-check_host "control: env.sh in zsh reads the quota of a plain container" '[ "$(docker run --rm --cpus 1.5 --user 0 --entrypoint /usr/bin/zsh "$image" -c ". /etc/t3-dev/env.sh; print -r -- \${OMP_NUM_THREADS-unset}" 2>&1)" = 2 ]'
-check_host "env.sh in zsh stays silent without cpu.max" 'out=$(docker run --rm --cgroupns host --user 0 --entrypoint /usr/bin/zsh "$image" -c ". /etc/t3-dev/env.sh; print -r -- \${OMP_NUM_THREADS-unset}" 2>&1); echo "$out"; [ "$out" = unset ]'
+check_host "control: env.sh in zsh reads the quota of a plain container" "[ \"\$(docker run --rm --cpus 1.5 --user 0 --entrypoint /usr/bin/zsh $image -c '. /etc/t3-dev/env.sh; print -r -- \${OMP_NUM_THREADS-unset}' 2>&1)\" = 2 ]"
+check_host "env.sh in zsh stays silent without cpu.max" "out=\$(docker run --rm --cgroupns host --user 0 --entrypoint /usr/bin/zsh $image -c '. /etc/t3-dev/env.sh; print -r -- \${OMP_NUM_THREADS-unset}' 2>&1); echo \"\$out\"; [ \"\$out\" = unset ]"
