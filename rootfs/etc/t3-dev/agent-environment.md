@@ -17,7 +17,7 @@ You run inside `t3-dev`, a hardened dev container (Ubuntu 24.04) on the owner's 
 
 - Docker is rootless and local to this container: `docker run`, `docker compose`, `docker build` and Testcontainers work (`/var/run/docker.sock` points to it).
 - Published ports listen on `localhost` of this container only. The owner reaches them through `ssh -L` or T3, not from the home network.
-- Not possible: `--privileged` containers, per-container CPU/memory limits (all nested containers share the 8 GB limit of `t3-dev`), writing to `/sys`. Nested networking (slirp4netns) is slower than native.
+- Not possible: `--privileged` containers, per-container CPU/memory limits (all nested containers share the memory limit of `t3-dev`), writing to `/sys`. Nested networking (slirp4netns) is slower than native.
 - Never use `docker cp` against containers that run untrusted code, and never mount a Docker socket into a nested container.
 
 ## Memory and CPU

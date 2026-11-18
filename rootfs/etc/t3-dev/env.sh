@@ -16,7 +16,10 @@ export PNPM_CONFIG_REGISTRY=https://registry.npmjs.org/
 export PNPM_CONFIG_MINIMUM_RELEASE_AGE_IGNORE_MISSING_TIME=false
 export PATH="$HOME/.local/bin:$HOME/.opencode/bin:$HOME/.local/share/mise/shims:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 export EDITOR=vim
-if [ -z "${OMP_NUM_THREADS:-}" ] && read -r t3_dev_quota t3_dev_period 2>/dev/null </sys/fs/cgroup/cpu.max && [ "$t3_dev_quota" != max ]; then
-  export OMP_NUM_THREADS=$(( (t3_dev_quota + t3_dev_period - 1) / t3_dev_period ))
+if [ -z "${OMP_NUM_THREADS:-}" ] && [ -r /sys/fs/cgroup/cpu.max ] && read -r t3_dev_quota t3_dev_period </sys/fs/cgroup/cpu.max; then
+  case "$t3_dev_quota:$t3_dev_period" in
+    *[!0-9:]* | :* | *:) ;;
+    *) export OMP_NUM_THREADS=$(( (t3_dev_quota + t3_dev_period - 1) / t3_dev_period )) ;;
+  esac
 fi
 unset t3_dev_quota t3_dev_period
