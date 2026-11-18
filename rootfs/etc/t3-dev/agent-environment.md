@@ -22,9 +22,9 @@ You run inside `t3-dev`, a hardened dev container (Ubuntu 24.04) on the owner's 
 
 ## Memory and CPU
 
-- Everything in the container, nested Docker containers included, shares 8 GiB of memory without swap and a quota of 10 CPUs, with a lower CPU priority than the other apps on the server.
+- Everything in the container, nested Docker containers included, shares one memory limit without swap and one CPU quota, with a lower CPU priority than the other apps on the host. `cat /sys/fs/cgroup/memory.max` shows the memory limit in bytes and `nproc` the CPU quota.
 - `nproc` (through `OMP_NUM_THREADS`), `os.availableParallelism()` in Node and Java report the quota. `os.cpus().length` in Node, `/proc/cpuinfo` and `Cpus_allowed_list` show every CPU of the host, so never size a parallel run from them.
-- At the memory limit the kernel kills processes inside (a Gradle daemon, a test fork, the T3 server), and parallel runs under the CPU quota fail with timeouts. Run large test suites (backend, frontend unit tests, e2e) one after another, not all at once, and give tools that size themselves from the host's CPU count an explicit worker count (for example Playwright `--workers`).
+- At the memory limit the kernel kills processes inside (a Gradle daemon, a test fork, the T3 server), and parallel runs under the CPU quota fail with timeouts. Run large test suites (for example backend, unit and end-to-end tests) one after another, not all at once, and give tools that size themselves from the host's CPU count an explicit worker count (for example Playwright `--workers`).
 
 ## Network
 

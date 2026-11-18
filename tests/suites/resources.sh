@@ -37,3 +37,4 @@ check_agent "control: the host has more CPUs than the quota" '[ "$(cat /sys/fs/c
 check_agent "nproc in zsh reports the quota, rounded up" '[ "$(zsh -c nproc)" = 2 ]'
 check_agent "nproc in login bash reports the quota, rounded up" '[ "$(bash -lc nproc)" = 2 ]'
 check_agent "a project can still set its own thread count" '[ "$(OMP_NUM_THREADS=1 zsh -c nproc)" = 1 ]'
+check_agent "agents can read their memory limit" 'grep -qE "^[0-9]+$" /sys/fs/cgroup/memory.max'
