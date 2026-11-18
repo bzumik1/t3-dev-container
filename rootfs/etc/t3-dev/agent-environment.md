@@ -10,7 +10,7 @@ You run inside `t3-dev`, a hardened dev container (Ubuntu 24.04) on the owner's 
 
 ## Tools
 
-- Preinstalled: Java 25 (Temurin), Node 24 with npm and pnpm, Docker with Compose and Buildx, git, gh, mise, build-essential, jq, yq, ripgrep, fd, fzf, tmux, vim, bubblewrap, the system libraries for Playwright Chromium and WebKit (`npx playwright install chromium webkit` downloads the browsers).
+- Preinstalled: Java 25 (Temurin), Node 26 with npm and pnpm, Docker with Compose and Buildx, git, gh, mise, build-essential, jq, yq, ripgrep, fd, fzf, tmux, vim, bubblewrap, the system libraries for Playwright Chromium and WebKit (`npx playwright install chromium webkit` downloads the browsers).
 - Other runtimes and CLI tools without root: `mise use -g python@3.13`, `mise use go@latest` in a project, `npm install -g` (goes to `~/.local`), `uv tool install`, `pipx`.
 
 ## Docker inside
