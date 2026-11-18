@@ -41,7 +41,9 @@ check "install-agents moves it to OpenCode 2" "t3-dev install-agents && $opencod
 check "update-agents runs the OpenCode 2 upgrade" 'out=$(t3-dev update-agents 2>&1); printf "%s\n" "$out"; printf "%s\n" "$out" | grep -q "Using method" && ! printf "%s\n" "$out" | grep -q "opencode upgrade selhal"'
 
 section "Daily maintenance at 04:00"
-check "maintenance sleeps until the next 04:00" 'm=$(supervisorctl -c /etc/t3-dev/supervisord.conf pid maintenance); read -r e s < <(ps -o etimes=,args= --ppid "$m" | awk "\$2 == \"sleep\" {print \$1, \$3}"); [ -n "$s" ] || exit 1; t=$(( $(date +%s) - e + s )); n=$(date -d "today 04:00" +%s); [ "$n" -gt "$(date +%s)" ] || n=$(date -d "tomorrow 04:00" +%s); echo "wakes at $(date -d "@$t"), next 04:00 is $(date -d "@$n")"; [ $((t - n)) -le 60 ] && [ $((n - t)) -le 60 ]'
+check "maintenance cleans up ten minutes after a start" 'supervisorctl -c /etc/t3-dev/supervisord.conf restart maintenance >/dev/null; sleep 2; m=$(supervisorctl -c /etc/t3-dev/supervisord.conf pid maintenance); ps -o args= --ppid "$m" | grep -qx "sleep 600"'
+check "after that clean-up maintenance sleeps until the next 04:00" 'm=$(supervisorctl -c /etc/t3-dev/supervisord.conf pid maintenance); pkill -P "$m" -x sleep; s=; for _ in $(seq 60); do read -r e s < <(ps -o etimes=,args= --ppid "$m" | awk "\$2 == \"sleep\" && \$3 != 600 {print \$1, \$3}"); [ -n "$s" ] && break; sleep 1; done; [ -n "$s" ] || exit 1; t=$(( $(date +%s) - e + s )); n=$(date -d "today 04:00" +%s); [ "$n" -gt "$(date +%s)" ] || n=$(date -d "tomorrow 04:00" +%s); echo "wakes at $(date -d "@$t"), next 04:00 is $(date -d "@$n")"; [ $((t - n)) -le 60 ] && [ $((n - t)) -le 60 ]'
+check_host "the clean-up after the start ran" 'docker logs --since 3m t3-dev 2>&1 | grep -q "Údržba: vnořený Docker zabírá"'
 
 section "Daily update keeps T3 in step with the other devices"
 put_file /tmp/t3-serving.sh <<'SH'
@@ -50,6 +52,7 @@ p=$(supervisorctl -c /etc/t3-dev/supervisord.conf pid t3)
 { readlink "/proc/$p/exe"; tr '\0' '\n' < "/proc/$p/cmdline"; } | grep -q "/versions/$1/"
 SH
 check "control: the t3 service serves an older T3" 'curl -fsSL --retry 3 https://t3.codes/install.sh | T3CODE_VERSION=0.1.7 sh >/dev/null 2>&1 && t3 --version | grep -q "v0.1.7$" && t3-dev restart t3 >/dev/null && bash /tmp/t3-serving.sh 0.1.7'
-check_agent "maintenance update moves T3 to the newest release and restarts the server" '/usr/local/libexec/t3-dev/maintenance update && v=$(t3 --version) && v=${v##*v} && echo "now $v" && [ "$v" != 0.1.7 ] && bash /tmp/t3-serving.sh "$v"'
+check "a manual update waits for a running one and leaves the server alone" '(flock /run/user/1000/t3-dev-update.lock sleep 5 &); sleep 1; out=$(t3-dev update-agents 2>&1); echo "$out" | grep -q "Čekám na jinou aktualizaci" && v=$(t3 --version) && v=${v##*v} && echo "command $v" && [ "$v" != 0.1.7 ] && bash /tmp/t3-serving.sh 0.1.7'
+check_agent "maintenance update restarts a server that still runs the older T3" '/usr/local/libexec/t3-dev/maintenance update && v=$(t3 --version) && v=${v##*v} && echo "now $v" && bash /tmp/t3-serving.sh "$v"'
 wait_for "t3 server answers after the update" 120 'curl -fsS -o /dev/null http://127.0.0.1:3773/'
 check_agent "maintenance update leaves an up-to-date T3 server running" 'p=$(supervisorctl -c /etc/t3-dev/supervisord.conf pid t3); /usr/local/libexec/t3-dev/maintenance update && [ "$(supervisorctl -c /etc/t3-dev/supervisord.conf pid t3)" = "$p" ]'
