@@ -51,8 +51,14 @@ install_agents() {
 }
 
 update_agents() {
+  exec 9>>/run/user/1000/t3-dev-update.lock
+  if ! flock -n 9; then
+    log "Čekám na jinou aktualizaci agentů..."
+    flock -w 1800 9 || { log "Jiná aktualizace agentů neskončila do 30 minut."; return 1; }
+  fi
   log "Aktualizuji agenty..."
   t3 update || log "t3 update selhal."
+  curl -fsSL --retry 3 https://t3.codes/install.sh | sh >/dev/null || log "Přepnutí příkazu t3 na novou verzi selhalo."
   curl -fsSL https://chatgpt.com/codex/install.sh | sh >/dev/null || log "Aktualizace Codexu selhala."
   claude update || log "claude update selhal."
   opencode upgrade || log "opencode upgrade selhal."

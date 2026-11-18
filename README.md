@@ -120,7 +120,18 @@ sudo docker pull ghcr.io/bzumik1/t3-dev-container:latest
 
 a restartem aplikace.
 
-Když nový image potřebuje nový `compose.yml` (proměnná `T3_DEV_COMPOSE`), kontejnery se nespustí a v logu je „compose.yml je zastaralý“. Pak importujte aktuální `compose.yml` a stáhněte `seccomp.json` znovu podle kroku 1 instalace. Po přechodu z verze 3 můžete smazat nepoužívaný adresář se starými klíči: `sudo rm -rf /DATA/AppData/t3-dev/ssh`. Agenti se aktualizují sami, ručně `t3-dev update-agents`.
+Když nový image potřebuje nový `compose.yml` (proměnná `T3_DEV_COMPOSE`), kontejnery se nespustí a v logu je „compose.yml je zastaralý“. Pak importujte aktuální `compose.yml` a stáhněte `seccomp.json` znovu podle kroku 1 instalace. Po přechodu z verze 3 můžete smazat nepoužívaný adresář se starými klíči: `sudo rm -rf /DATA/AppData/t3-dev/ssh`. Agenti se aktualizují sami, každý den ve 4:00 (časové pásmo `TZ`). Když T3 server běží na jiné verzi, než na kterou ukazuje příkaz `t3` (i po ruční aktualizaci bez restartu), restartuje se ve 4:00 a vlákna, která na serveru zrovna běží, se přeruší. Aktualizace stahuje a spouští instalátory T3 a Codexu a aktualizace Claude Code a OpenCode přímo od jejich vydavatelů, bez 3denní ochrany, kterou mají npm, pnpm a uv. Napadené vydání by se tak na server dostalo do příštího rána. Zůstane v sandboxu agentů, ale získá vše, co mají agenti: přihlášení ke GitHubu a AI službám, `/workspace` a otevřený internet.
+
+### Stejná verze T3 na serveru a na ostatních zařízeních
+
+T3 na serveru a na zařízeních, ze kterých se k němu připojujete (desktopová aplikace, CLI), musí mít stejnou verzi. Jinak T3 hlásí „The linked environment's answer did not match this version“ a vlákna na serveru nejdou číst ani řídit. Verzi serveru ukáže `t3-dev status` (řádek `t3`), verzi na zařízení `t3 --version` (desktopová aplikace na macOS ho má v `~/.t3/bin/t3`). Zařízení se obvykle aktualizují hned po vydání, server až ve 4:00, takže se verze můžou až den lišit. Pak server aktualizujte ručně přes SSH nebo z hostitele:
+
+```bash
+sudo docker exec t3-dev t3-dev update-agents
+sudo docker exec t3-dev t3-dev restart t3
+```
+
+Restart z vlákna T3 na serveru by to vlákno ukončil. T3 se stahuje z GitHub Releases, ne přes npm, takže se ho 3denní ochrana balíčků netýká a nová verze je pro server k dispozici hned. Kontrola SHA-256 pochází ze stejného vydání, takže chrání jen před poškozeným stažením, ne před podvrženým vydáním.
 
 ## Instrukce pro agenty
 
@@ -147,6 +158,7 @@ Z hostitele: `sudo docker exec -it t3-dev t3-dev shell` (shell se stejnými omez
 - **Docker uvnitř nejede:** `t3-dev status` a log kontejneru. UI ZimaOS musí zachovat `security_opt`, `cap_add` a `devices` z `compose.yml`. Pokud je zahodí, nainstalujte přes SSH: `sudo docker compose -f compose.yml up -d`.
 - **Odkaz na T3 Connect vypršel:** restartujte kontejner `t3-dev`, objeví se nový.
 - **Po restartu `t3-dev-net` nemá `t3-dev` síť:** restartujte i `t3-dev` (sdílí síť s `t3-dev-net`).
+- **T3 hlásí „The linked environment's answer did not match this version“:** zařízení a server mají různou verzi T3, viz [Stejná verze T3 na serveru a na ostatních zařízeních](#stejná-verze-t3-na-serveru-a-na-ostatních-zařízeních).
 
 ## Vývoj
 
